@@ -1,11 +1,11 @@
 ---
-name: worktree-subagent
-description: Guide for spawning and managing subagents using git worktrees for isolated implementation tasks.
+name: subagent-impl
+description: Guide for spawning and managing subagents using git worktrees.
 ---
 
 # Subagent Workflow
 
-**Main agent role**: Planner, monitor, reviewer, integrator. Spawn subagents for implementation.
+**Main agent role**: Monitor, reviewer, integrator. Spawn subagents for implementation.
 
 ## Subagent Types
 
@@ -35,7 +35,7 @@ git worktree add ./worktrees/<name> -b feature/<id>-<name>
 
 ## 3. Spawn Subagent
 
-Use the Task tool with `subagent_type="general-purpose"` and `run_in_background=true`:
+Use Task tool with `subagent_type="general-purpose"` and `run_in_background=true`:
 
 ```
 You are working in: <worktree-path>
