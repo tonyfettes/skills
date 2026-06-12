@@ -1,0 +1,700 @@
+///| Run MoonBit native tests with AddressSanitizer.
+///|
+///| Parses each specified package file (moon.pkg DSL via
+///| moonbitlang/parser/moon_config, or moon.pkg.json via @json), patches
+///| link.native with ASan flags, disables
+///| mimalloc, runs `moon test`, and restores everything afterward.
+///|
+///| Usage:
+///|   moon run --target native scripts/run-asan.mbtx -- \
+///|     --repo-root <project-root> \
+///|     --pkg moon.pkg \
+///|     --pkg main/moon.pkg
+
+///|
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/process",
+  "moonbitlang/async/fs",
+  "moonbitlang/x/path",
+  "moonbitlang/x/sys",
+  "moonbitlang/parser/moon_config",
+  "tonyfettes/platform",
+}
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+///|
+let asan_compile_flags : String = "-g -fsanitize=address -fno-omit-frame-pointer"
+
+// ---------------------------------------------------------------------------
+// AST ↔ JSON conversion
+// ---------------------------------------------------------------------------
+
+///| Convert moon_config Ast to plain Json (strip location info).
+fn ast_to_json(ast : @moon_config.Ast) -> Json {
+  match ast {
+    Null(..) => Json::null()
+    Bool(value, ..) => Json::boolean(value)
+    Str(str, ..) => Json::string(str)
+    Float(float, ..) =>
+      // Integer literals in moon.pkg (e.g. "123"). Try parsing as JSON number.
+      try {
+        @json.parse(float)
+      } catch {
+        _ => Json::string(float)
+      }
+    Arr(content, ..) => Json::array(content.to_array().map(ast_to_json))
+    Obj(fields, ..) => {
+      let obj : Map[String, Json] = Map::new()
+      for field in fields {
+        let (k, v) = field
+        obj[k] = ast_to_json(v)
+      }
+      Json::object(obj)
+    }
+  }
+}
+
+///| In DSL format, non-import config lives inside an "options" key.
+///| Flatten it to top level so DSL and JSON share the same shape.
+fn flatten_options(config : Json) -> Json {
+  guard config is Object(obj) else { return config }
+  guard obj.get("options") is Some(Object(opts)) else { return config }
+  let result : Map[String, Json] = Map::new()
+  for k, v in obj {
+    if k != "options" {
+      result[k] = v
+    }
+  }
+  for k, v in opts {
+    result[k] = v
+  }
+  Json::object(result)
+}
+
+// ---------------------------------------------------------------------------
+// DSL serialization (write patched config back as valid moon.pkg)
+// ---------------------------------------------------------------------------
+
+///| Serialize a Json config back to moon.pkg DSL format.
+///| Import blocks use DSL syntax; other config goes inside options().
+///| Values are written as compact JSON (valid in DSL).
+fn serialize_dsl(config : Json) -> String {
+  guard config is Object(obj) else { return "" }
+  let mut result = ""
+
+  // 1. Serialize import blocks
+  let import_keys = ["import", "test-import", "wbtest-import"]
+  let import_suffixes = ["", " for \"test\"", " for \"wbtest\""]
+  for i in 0..<3 {
+    let key = import_keys[i]
+    let suffix = import_suffixes[i]
+    guard obj.get(key) is Some(Array(pkgs)) else { continue }
+    if pkgs.is_empty() {
+      continue
+    }
+    result = "\{result}import {\n"
+    for pkg in pkgs {
+      let item = match pkg {
+        String(s) => "\"\{s}\""
+        Object(m) => {
+          let path = match m.get("path") {
+            Some(String(s)) => s
+            _ => ""
+          }
+          let pkg_alias = match m.get("alias") {
+            Some(String(s)) => s
+            _ => ""
+          }
+          "\"\{path}\" @\{pkg_alias}"
+        }
+        _ => pkg.stringify()
+      }
+      result = "\{result}  \{item},\n"
+    }
+    result = "\{result}}\{suffix}\n\n"
+  }
+
+  // 2. Collect non-import entries
+  let mut has_options = false
+  for k, _ in obj {
+    if k != "import" && k != "test-import" && k != "wbtest-import" {
+      has_options = true
+      break
+    }
+  }
+  if has_options {
+    result = "\{result}options(\n"
+    for k, v in obj {
+      if k == "import" || k == "test-import" || k == "wbtest-import" {
+        continue
+      }
+      result = "\{result}  \"\{k}\": \{v.stringify()},\n"
+    }
+    result = "\{result})\n"
+  }
+
+  result
+}
+
+// ---------------------------------------------------------------------------
+// Platform detection
+// ---------------------------------------------------------------------------
+
+///|
+struct AsanConfig {
+  cc : String
+  cc_flags : String
+  stub_cc_flags : String? // Some → override entirely (Windows); None → append
+  detect_leaks : String
+}
+
+///| Find Homebrew LLVM clang (supports both ASan and LSan).
+async fn find_brew_clang() -> String? {
+  let brew = match @process.collect_stdout("which", ["brew"]) {
+    (0, out) => out.text().trim_end().to_string()
+    _ =>
+      if @fs.exists("/opt/homebrew/bin/brew") {
+        "/opt/homebrew/bin/brew"
+      } else {
+        return None
+      }
+  }
+  let versions = ["llvm", "llvm@18", "llvm@19", "llvm@15", "llvm@13"]
+  for ver in versions {
+    let (code, out) = @process.collect_stdout(brew[:], ["--prefix", ver])
+    if code == 0 {
+      let prefix = out.text().trim_end().to_string()
+      let clang = "\{prefix}/bin/clang"
+      if @fs.exists(clang[:]) {
+        return Some(clang)
+      }
+    }
+  }
+  None
+}
+
+///| Check whether a compiler supports -fsanitize=address (compile + link).
+async fn check_system_asan(cc : String) -> Bool {
+  let dir = @fs.tmpdir(prefix="asan-check-")
+  let src = @path.Path(dir).join(@path.Path("t.c")).to_string()
+  let out = @path.Path(dir).join(@path.Path("t.out")).to_string()
+  @fs.write_file(src[:], "int main(){return 0;}", create=0o644)
+  let code = @process.run(
+    cc[:],
+    ["-fsanitize=address", src, "-o", out],
+  )
+  @fs.rmdir(dir[:], recursive=true)
+  code == 0
+}
+
+///| Determine ASan compiler and flags for the current platform.
+async fn get_asan_config() -> AsanConfig {
+  if @platform.apple {
+    // Prefer Homebrew LLVM (supports LSan)
+    match find_brew_clang() {
+      Some(clang) =>
+        return {
+          cc: clang,
+          cc_flags: asan_compile_flags,
+          stub_cc_flags: None,
+          detect_leaks: "1",
+        }
+      None => ()
+    }
+    // Fall back to system clang (Xcode 15+, ASan only, no LSan)
+    let cc = match @process.collect_stdout("which", ["cc"]) {
+      (0, out) => out.text().trim_end().to_string()
+      _ => "/usr/bin/cc"
+    }
+    if check_system_asan(cc) {
+      return {
+        cc,
+        cc_flags: asan_compile_flags,
+        stub_cc_flags: None,
+        detect_leaks: "0",
+      }
+    }
+    println(
+      "Error: No ASan-capable compiler found. Install Homebrew LLVM: brew install llvm",
+    )
+    @sys.exit(1)
+    panic()
+  } else if @platform.linux {
+    let cc = match @process.collect_stdout("which", ["cc"]) {
+      (0, out) => out.text().trim_end().to_string()
+      _ => "gcc"
+    }
+    { cc, cc_flags: asan_compile_flags, stub_cc_flags: None, detect_leaks: "1" }
+  } else {
+    // Windows
+    {
+      cc: "cl",
+      cc_flags: "/Z7 /fsanitize=address",
+      stub_cc_flags: Some("/Z7 /fsanitize=address"),
+      detect_leaks: "0",
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// mimalloc disable
+// ---------------------------------------------------------------------------
+
+///| Find libmoonbitrun.o by deriving the path from the moon binary.
+async fn find_libmoonbitrun() -> String? {
+  let (code, out) = @process.collect_stdout("which", ["moon"])
+  if code == 0 {
+    let moon_bin = out.text().trim_end().to_string()
+    let resolved = @fs.realpath(moon_bin[:])
+    let lib_dir = @path.Path(resolved)
+      .dirname()
+      .dirname()
+      .join(@path.Path("lib"))
+    let path = lib_dir.join(@path.Path("libmoonbitrun.o")).to_string()
+    if @fs.exists(path[:]) {
+      return Some(path)
+    }
+  }
+  // Fallback: MOON_HOME
+  let moon_home = match @sys.get_env_var("MOON_HOME") {
+    Some(h) => h
+    None => {
+      let home = @sys.get_env_var("HOME").unwrap_or(
+        @sys.get_env_var("USERPROFILE").unwrap_or("."),
+      )
+      "\{home}/.moon"
+    }
+  }
+  let path = @path.Path(moon_home)
+    .join(@path.Path("lib/libmoonbitrun.o"))
+    .to_string()
+  if @fs.exists(path[:]) {
+    Some(path)
+  } else {
+    None
+  }
+}
+
+///| Replace libmoonbitrun.o with an empty object so ASan can intercept
+///| all memory allocations (mimalloc normally prevents this).
+///| Returns (path, original_bytes) for restoration, or None.
+async fn disable_mimalloc(cc : String) -> (String, Bytes)? {
+  match find_libmoonbitrun() {
+    None => {
+      println("Warning: libmoonbitrun.o not found, skipping mimalloc disable")
+      None
+    }
+    Some(path) => {
+      let original = @fs.read_file(path[:]).binary()
+      let dir = @fs.tmpdir(prefix="asan-mimalloc-")
+      let dummy = @path.Path(dir).join(@path.Path("empty.c")).to_string()
+      @fs.write_file(dummy[:], "", create=0o644)
+      if @platform.win32 || @platform.win64 {
+        let _ = @process.run(
+          "cl.exe",
+          [dummy, "/c", "/Fo:\{path}"],
+        )
+      } else {
+        let _ = @process.run(cc[:], ["-c", dummy, "-o", path])
+      }
+      @fs.rmdir(dir[:], recursive=true)
+      println("Disabled mimalloc: \{path}")
+      Some((path, original))
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Package file handling
+// ---------------------------------------------------------------------------
+
+///|
+fn is_dsl_format(path : String) -> Bool {
+  @path.Path(path).basename().to_string() == "moon.pkg"
+}
+
+///| Resolve a --pkg argument to an actual file path.
+///| Tries both moon.pkg and moon.pkg.json if the specified file doesn't exist.
+async fn resolve_pkg_path(repo_root : String, pkg_arg : String) -> String {
+  let requested = if @path.Path(pkg_arg).is_absolute() {
+    pkg_arg
+  } else {
+    @path.Path(repo_root).join(@path.Path(pkg_arg)).to_string()
+  }
+  if @fs.exists(requested[:]) {
+    return @fs.realpath(requested[:])
+  }
+  let name = @path.Path(requested).basename().to_string()
+  let dir = @path.Path(requested).dirname().to_string()
+  let alt = if name == "moon.pkg" {
+    @path.Path(dir).join(@path.Path("moon.pkg.json")).to_string()
+  } else if name == "moon.pkg.json" {
+    @path.Path(dir).join(@path.Path("moon.pkg")).to_string()
+  } else {
+    ""
+  }
+  if alt.length() > 0 && @fs.exists(alt[:]) {
+    return @fs.realpath(alt[:])
+  }
+  println("Error: Package file not found for --pkg \{pkg_arg}")
+  println("  Tried: \{requested}")
+  if alt.length() > 0 {
+    println("  Tried: \{alt}")
+  }
+  @sys.exit(1)
+  panic()
+}
+
+///| Parse a package file into a flat Json config.
+///| DSL files are parsed with @moon_config and flattened;
+///| JSON files are parsed with @json.
+async fn parse_pkg_config(path : String) -> Json {
+  let content = @fs.read_file(path[:]).text()
+  if is_dsl_format(path) {
+    let (ast, reports) = @moon_config.parse_moon_pkg(content, name=path)
+    if reports.length() > 0 {
+      println("Warning: \{reports.length()} parse issue(s) in \{path}")
+    }
+    flatten_options(ast_to_json(ast))
+  } else {
+    try {
+      @json.parse(content)
+    } catch {
+      _ => {
+        println("Error: Failed to parse JSON in \{path}")
+        @sys.exit(1)
+        panic()
+      }
+    }
+  }
+}
+
+///| Check if a package is an entry package (is-main or has tests).
+///| Only entry packages get cc-flags and cc-link-flags patched.
+async fn is_entry_package(config : Json, pkg_dir : String) -> Bool {
+  guard config is Object(obj) else { return false }
+  // Check is-main / is_main
+  if obj.get("is-main") is Some(True) {
+    return true
+  }
+  if obj.get("is_main") is Some(True) {
+    return true
+  }
+  let entries = @fs.readdir(pkg_dir[:])
+  for entry in entries {
+    // Check for *_test.mbt files
+    if entry.has_suffix("_test.mbt") {
+      return true
+    }
+    // Check for inline test blocks in .mbt files (e.g. python.mbt)
+    if entry.has_suffix(".mbt") {
+      let fpath = @path.Path(pkg_dir).join(@path.Path(entry)).to_string()
+      let content = @fs.read_file(fpath[:]).text()
+      if content.contains("\ntest ") {
+        return true
+      }
+    }
+  }
+  false
+}
+
+// ---------------------------------------------------------------------------
+// Config patching
+// ---------------------------------------------------------------------------
+
+///| Ensure link.native exists in the config, creating it if needed.
+fn ensure_link_native(config : Json) -> Json {
+  guard config is Object(obj) else { return config }
+  let link : Map[String, Json] = match obj.get("link") {
+    Some(Object(l)) => l
+    _ => {
+      let l : Map[String, Json] = Map::new()
+      obj["link"] = Json::object(l)
+      l
+    }
+  }
+  match link.get("native") {
+    Some(Object(_)) => ()
+    _ => link["native"] = Json::object(Map::new())
+  }
+  config
+}
+
+///| Patch the config with ASan flags.
+///| Always patches stub-cc-flags. Only patches cc-flags on entry packages.
+///| Both cc-flags and stub-cc-flags are APPENDED to preserve existing flags
+///| (e.g. -I, -D paths needed for compilation).
+fn patch_config(config : Json, asan : AsanConfig, is_entry : Bool) -> Json {
+  let config = ensure_link_native(config)
+  guard config is Object(obj) else { return config }
+  guard obj.get("link") is Some(Object(link)) else { return config }
+  guard link.get("native") is Some(Object(native)) else { return config }
+
+  // cc-flags: entry packages only (instruments MoonBit-generated C)
+  // Append to preserve existing -I, -D, -w flags (e.g. llvm.mbt)
+  if is_entry {
+    let existing_cc = match native.get("cc-flags") {
+      Some(String(s)) => s
+      _ => ""
+    }
+    if existing_cc.length() > 0 {
+      native["cc-flags"] = Json::string("\{existing_cc} \{asan.cc_flags}")
+    } else {
+      native["cc-flags"] = Json::string(asan.cc_flags)
+    }
+    // cc-link-flags: ensure the ASan runtime is linked (required when stubs
+    // are compiled with -fsanitize=address but the linker step needs it too)
+    let existing_link = match native.get("cc-link-flags") {
+      Some(String(s)) => s
+      _ => ""
+    }
+    let asan_link = "-fsanitize=address"
+    if existing_link.length() > 0 {
+      native["cc-link-flags"] = Json::string("\{existing_link} \{asan_link}")
+    } else {
+      native["cc-link-flags"] = Json::string(asan_link)
+    }
+  }
+
+  // stub-cc-flags: all packages (instruments C stub files)
+  // Append to preserve existing -I, -D flags (e.g. raylib build vars)
+  match asan.stub_cc_flags {
+    Some(flags) =>
+      // Windows: override entirely
+      native["stub-cc-flags"] = Json::string(flags)
+    None => {
+      let existing = match native.get("stub-cc-flags") {
+        Some(String(s)) => s
+        _ => ""
+      }
+      if existing.length() > 0 {
+        native["stub-cc-flags"] = Json::string(
+          "\{existing} \{asan_compile_flags}",
+        )
+      } else {
+        native["stub-cc-flags"] = Json::string(asan_compile_flags)
+      }
+    }
+  }
+
+  config
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot & restore
+// ---------------------------------------------------------------------------
+
+///|
+struct Snapshot {
+  path : String
+  content : String
+  is_dsl : Bool
+}
+
+///| Write a patched config back to the package file.
+async fn write_patched(snapshot : Snapshot, patched : Json) -> Unit {
+  if snapshot.is_dsl {
+    let text = serialize_dsl(patched)
+    @fs.write_file(snapshot.path[:], text, create=0o644)
+  } else {
+    let text = patched.stringify(indent=2) + "\n"
+    @fs.write_file(snapshot.path[:], text, create=0o644)
+  }
+}
+
+///| Restore all snapshotted files to their original content.
+async fn restore_all(snapshots : Array[Snapshot]) -> Unit {
+  for s in snapshots {
+    @fs.write_file(s.path[:], s.content, create=0o644)
+    println("Restored: \{s.path}")
+  }
+}
+
+///| Restore mimalloc backup if present.
+async fn restore_mimalloc(backup : (String, Bytes)?) -> Unit {
+  match backup {
+    Some((path, original)) => {
+      @fs.write_file(path[:], original, create=0o644)
+      println("Restored mimalloc: \{path}")
+    }
+    None => ()
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
+///|
+async fn main {
+  // ---- Parse arguments ----
+  let cmd = @argparse.Command::new(
+    "run-asan",
+    about="Run MoonBit native tests with AddressSanitizer",
+    options=[
+      @argparse.OptionArg::new(
+        "repo-root",
+        long="repo-root",
+        about="Project repository root",
+        required=true,
+      ),
+      @argparse.OptionArg::new(
+        "pkg",
+        long="pkg",
+        about="Path to moon.pkg or moon.pkg.json (repeatable)",
+        action=Append,
+      ),
+    ],
+    flags=[
+      @argparse.FlagArg::new(
+        "no-disable-mimalloc",
+        long="no-disable-mimalloc",
+        about="Skip disabling mimalloc (not recommended)",
+      ),
+    ],
+  )
+  let matches = try {
+    cmd.parse()
+  } catch {
+    _ => {
+      println("Error: failed to parse arguments")
+      @sys.exit(1)
+      panic()
+    }
+  }
+  let repo_root = match matches.values.get("repo-root") {
+    Some(vals) if vals.length() > 0 => @fs.realpath(vals[0][:])
+    _ => {
+      println("Error: --repo-root is required")
+      @sys.exit(1)
+      panic()
+    }
+  }
+  let pkg_args = match matches.values.get("pkg") {
+    Some(vals) if vals.length() > 0 => vals
+    _ => {
+      println(
+        "Error: No --pkg arguments provided. Specify at least one moon.pkg or moon.pkg.json.",
+      )
+      @sys.exit(1)
+      panic()
+    }
+  }
+  let no_disable_mimalloc = matches.flags.get("no-disable-mimalloc").unwrap_or(false)
+
+  // ---- Validate ----
+  if not(@fs.exists(repo_root[:])) {
+    println("Error: --repo-root is not a directory: \{repo_root}")
+    @sys.exit(1)
+  }
+  let mod_file = @path.Path(repo_root)
+    .join(@path.Path("moon.mod"))
+    .to_string()
+  let mod_json = @path.Path(repo_root)
+    .join(@path.Path("moon.mod.json"))
+    .to_string()
+  if !@fs.exists(mod_file[:]) && !@fs.exists(mod_json[:]) {
+    println(
+      "Warning: no moon.mod or moon.mod.json found in \{repo_root}. Is --repo-root correct?",
+    )
+  }
+
+  // ---- Resolve package paths (deduplicate) ----
+  let pkg_paths : Array[String] = []
+  let seen : Map[String, Bool] = Map::new()
+  for arg in pkg_args {
+    let path = resolve_pkg_path(repo_root, arg)
+    if not(seen.get(path).unwrap_or(false)) {
+      seen[path] = true
+      pkg_paths.push(path)
+    }
+  }
+
+  // ---- ASan config ----
+  let asan = get_asan_config()
+  let platform_name = if @platform.apple {
+    "Darwin"
+  } else if @platform.linux {
+    "Linux"
+  } else {
+    "Windows"
+  }
+  let leak_enabled = asan.detect_leaks == "1"
+  let leak_status = if leak_enabled { "enabled" } else { "disabled" }
+  println("Platform: \{platform_name}")
+  println("ASan compiler: \{asan.cc}")
+  println("ASan compile flags: \{asan.cc_flags}")
+  println("Leak detection: \{leak_status}")
+
+  // ---- Snapshot original files ----
+  let snapshots : Array[Snapshot] = []
+  for path in pkg_paths {
+    let content = @fs.read_file(path[:]).text()
+    snapshots.push(
+      Snapshot::{ path, content, is_dsl: is_dsl_format(path) },
+    )
+  }
+
+  // ---- Disable mimalloc ----
+  let mimalloc_backup : (String, Bytes)? = if not(no_disable_mimalloc) {
+    disable_mimalloc(asan.cc)
+  } else {
+    None
+  }
+
+  // ---- Patch, run, restore (no finally — use try/catch for cleanup) ----
+  let exit_code = try {
+    // Patch files
+    for snapshot in snapshots {
+      let config = parse_pkg_config(snapshot.path)
+      let pkg_dir = @path.Path(snapshot.path).dirname().to_string()
+      let is_entry = is_entry_package(config, pkg_dir)
+      let patched = patch_config(config, asan, is_entry)
+      write_patched(snapshot, patched)
+      let fmt = if snapshot.is_dsl { "DSL" } else { "JSON" }
+      let kind = if is_entry { "entry" } else { "library" }
+      println("Patched (\{fmt}, \{kind}): \{snapshot.path}")
+    }
+
+    // Build environment
+    let extra_env : Map[String, String] = Map::new()
+    if @platform.apple {
+      extra_env["MOON_CC"] = asan.cc
+      extra_env["MOON_AR"] = "/usr/bin/ar"
+    }
+    extra_env["ASAN_OPTIONS"] = "detect_leaks=\{asan.detect_leaks}:fast_unwind_on_malloc=0"
+    let lsan_supp = @path.Path(repo_root)
+      .join(@path.Path(".lsan-suppressions"))
+      .to_string()
+    if @fs.exists(lsan_supp[:]) {
+      extra_env["LSAN_OPTIONS"] = "suppressions=\{lsan_supp}"
+    }
+
+    // Run tests
+    @process.run(
+      "moon",
+      ["test", "--target", "native", "-v"],
+      cwd=repo_root[:],
+      extra_env~,
+    )
+  } catch {
+    e => {
+      // Restore on error before exiting
+      println("Error during patching/testing: \{e}")
+      restore_all(snapshots)
+      restore_mimalloc(mimalloc_backup)
+      @sys.exit(1)
+      panic()
+    }
+  }
+
+  // ---- Restore on success ----
+  restore_all(snapshots)
+  restore_mimalloc(mimalloc_backup)
+
+  @sys.exit(exit_code)
+}
