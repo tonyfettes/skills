@@ -25,12 +25,14 @@ Load the reference matching your current work BEFORE writing code:
 | Designing visibility and public API shape (`pub`, opaque types, `.mbti` review) | `references/language.md` + `references/toolchain.md` |
 | Refactoring (API shrinkage, package splits, fn↔method, coverage gap filling) | `references/refactoring.md` |
 | Optimizing data layout with `#valtype` (unboxing, flat arrays, value enums, the visibility interaction) | `references/valtype.md` |
-| Optimizing hot-path code on the native backend (refcount traffic, polymorphic `Eq` on enums, cross-package inlining, reading generated C/asm, profiling method) | `references/optimization.md` |
+| Optimizing hot-path code on the native backend (refcount traffic, polymorphic `Eq` on enums, cross-package inlining, reading generated C/asm) | `references/optimization.md` |
 | SIMD with the experimental `V128` type (`@v128` lane ops, wasm SIMD128 mirror) | `references/optimization.md` |
-| Benchmarks (`@bench.T`) and full-output snapshots (`@test.T::snapshot`) | `references/testing.md` |
+| Async IO (`moonbitlang/async` setup, `with_task_group`, async tests, cancellation-safe cleanup, backpressure) | `references/async.md` |
+| Writing tests (snapshot `inspect` family, black-box defaults, docstring tests, `@test.T::snapshot`, error assertions) | `references/testing.md` |
+| Measuring performance (`@bench.T` benchmarks, native `--profile`, before/after methodology) | `references/bench-profile.md` |
 | Code navigation with `moon ide` (outline/peek-def/find-references/rename/hover/doc) | `references/moon-ide.md` |
 | Binding a C library (`extern "c"`, stubs, ownership, callbacks, ASan) | `references/c-ffi.md` (+ topic-specific c-ffi-*.md) |
-| Writing standalone `.mbtx` scripts (CLI tools, subprocess, FS, JSON, regex) | `references/mbtx.md` |
+| Writing standalone `.mbtx` scripts (script skeleton, inline imports, run commands; package APIs go through the API Lookup Rule) | `references/mbtx.md` |
 | Conditional compilation, link configuration, pre-build commands, warning control | `references/toolchain.md` |
 
 ## Top recurring mistakes — check before every edit
@@ -134,14 +136,6 @@ readability checks across the touched file, not just the exact commented line:
   segments — `[Esc, b'[', ..body, final]`, `[..b"\x1b]", ..rest]` — over
   index-arithmetic `if`/`else` chains, `match len` ladders, or manual guard
   sequences.
-- Prefer `if expr is Some(value) { ... } else { ... }`, and chain it with
-  related boolean conditions when that removes a nested `match` without hiding
-  behavior. For early-exit shapes, prefer `guard expr is Some(value) else { ... }`.
-  Do not `match` an Option.
-- Prefer optional argument forwarding when passing an optional parameter through
-  unchanged. If a callee accepts `arg? : T` and the caller already has an
-  optional parameter `arg? : T`, forward it as `inner(value?)` — do not unwrap
-  and rewrap by hand with `if value is Some(value) { inner(value~) } else { inner() }`.
 - Do not keep helpers that only return a constant, wrap a single obvious
   expression, or rename a trivial mutation. Inline them unless the helper
   enforces an invariant or names a real domain action.
@@ -161,9 +155,6 @@ readability checks across the touched file, not just the exact commented line:
   parsing its `Failure` text. Reserve `fail` for assertions, impossible states,
   quick tests, or errors that are intentionally not part of a typed handling
   path.
-- Treat `mut Array[_]` as suspicious. Use `mut` only when the array variable is
-  reassigned; pushing or mutating array contents does not by itself need a
-  mutable binding.
 - In state-machine or index-arithmetic logic, add a short local comment for
   non-obvious boundary handling. Use compact ASCII diagrams when positions or
   offsets are hard to see from code.
@@ -267,12 +258,8 @@ my_module
 - **Do not introduce `abort` without explicit user approval** — before writing MoonBit code that calls `abort`, pause and ask the user to confirm that aborting is the intended behavior. Only use `abort` after that confirmation; otherwise model the failure with a typed error/`raise`, `Result`, or an approved adapter.
 - **Do not write `guard` without `else` without explicit user approval** — `guard cond` / `guard x is Pattern` with no `else` panics at runtime when the condition fails; treat it with the same severity as `abort`. Default to `guard ... else { ... }` with an early return, typed error, or fallback. In tests too: prefer raising via `guard ... else { fail("...") }` over panicking.
 - **Test failure priority: re-raise > `fail` > never `abort`** — in tests, prefer letting the error propagate (the test fails with the actual error); use `fail(...)` only when propagation is impossible; never `abort` in a test.
-- **Don't `match` an Option** — use `x.unwrap_or(...)` (and friends) for trivial defaults, `if x is Some(v) { ... } else { ... }` for branching, or `guard x is Some(v) else { ... }` for early exit. Reserve `match` for enums with several meaningful arms.
-- **Don't swallow all async errors** — in async code, never write a catch-all
-  branch like `catch { _ => () }`. If a catch-all is genuinely needed for a
-  user-visible best-effort operation, first preserve cancellation with
-  `error if @async.is_being_cancelled() => raise error`. If cancellation itself
-  should be swallowed, discuss that behavior with the user before doing it.
+- **Don't `match` an Option** — use `x.unwrap_or(...)` (and friends) for trivial defaults, `if x is Some(v) { ... } else { ... }` for branching (chain it with related boolean conditions when that removes a nested `match` without hiding behavior), or `guard x is Some(v) else { ... }` for early exit. Reserve `match` for enums with several meaningful arms.
+- **Don't swallow all async errors** — never a catch-all `catch { _ => () }` in async code; preserve cancellation first (`error if @async.is_being_cancelled() => raise error`); see `references/async.md`.
 - **Don't use `return` unnecessarily** — the last expression is the return value
 - **Don't create methods without `Type::` prefix** — methods need explicit type prefix
 - **Don't forget to handle array bounds** — use `get()` for safe access
@@ -289,8 +276,8 @@ my_module
 - **Don't call `@json.inspect()`** — use the prelude `json_inspect(value, ...)` without a package prefix
 - **Async** — MoonBit has no `await` keyword; do not add it. Async functions/tests are marked with the `async` prefix (e.g. `[pub] async fn ...`, `async test ...`). Async functions default to raising, so do not add `raise`; add `noraise` only when the async body must not raise.
 - **No `finally`** in MoonBit — use `defer expr` / `defer { ... }` for scope-exit cleanup (runs on normal exit and when an error propagates); see `references/control-flow.md`
-- **Cancellation-critical async cleanup** — in `moonbitlang/async`, cancellation arrives as a raised error at suspension points, so `catch`/`defer` blocks themselves DO run; but while a task is being cancelled, any **async operation inside the cleanup** is itself cancelled immediately. Must-complete async cleanup (terminal-state restore, external-resource release) needs `@async.protect_from_cancel` or `TaskGroup::add_defer` with the same protection inside. Refinements from production review: protect only the cancelled path (the normal path should stay cancellable, or `with_timeout` can no longer abort it); bound the protected section with its own hard timeout; and if the cleanup's timeout fires during error propagation, catch **only** the cleanup timeout and re-raise the original body error — otherwise the cleanup `TimeoutError` masks the real failure.
-- **Async pipeline backpressure** — between reader/writer tasks use **bounded** queues; an `Unbounded` inbound queue silently removes socket backpressure and can OOM the process. Forced shutdown must clear both queues (stale frames leak across reconnects), and verify loop tasks actually park/exit after their channel closes — don't assume `exit` alone stops a busy loop.
+- **Cancellation-critical async cleanup** — in `moonbitlang/async`, `defer`/`catch` DO run on cancellation, but any async operation inside the cleanup is itself cancelled immediately; must-complete cleanup needs `@async.protect_from_cancel`, with important refinements — read `references/async.md` before writing one.
+- **Async pipeline backpressure** — use **bounded** queues between reader/writer tasks (an `Unbounded` inbound queue can OOM the process); shutdown/queue-draining rules in `references/async.md`.
 - **No cross-package extension methods** — you cannot define `@otherpkg.Type::method` from outside that type's own package. Use free functions or define a trait and `impl Trait for @otherpkg.Type` instead.
 - **Do NOT use context7** for MoonBit library lookups — MoonBit packages aren't indexed there. Use `moon ide doc`, mooncakes.io, the moon registry cache (`~/.moon/registry/cache/`), `.mbti` files, or the library's source/GitHub instead.
 - **Avoid `moonbitlang/x` when a `core`/`async` equivalent exists** — `moonbitlang/x` is a staging/experimental grab-bag. IO (fs, network) → `moonbitlang/async`; encoding → `moonbitlang/core/encoding`. Exception: `moonbitlang/x/path` for pure path manipulation is fine and preferred over hand-rolled string splitting. Only reach for other `x` packages when the user explicitly asks.
@@ -299,6 +286,6 @@ my_module
 - **Don't use deprecated `Json` accessors** (`.value(key)`, `.as_string()`, ...) — pattern-match instead: `if json is Object(obj) { obj.get(key) }`, `if json is String(s) { ... }`.
 - **`#valtype` has hard limits** (currently ≤6 fields, no `mut` fields, no abstract-type fields, no nested value types — limits may be relaxed in future compiler releases) — check `references/valtype.md` before annotating.
 - **Search core before hand-rolling utilities** — case-insensitive compare is `equal_ignore_ascii_case`, substring scan is `String::contains_any`, clamping is `Int::clamp`, String↔Bytes is `moonbitlang/core/encoding/utf8`. If it feels like a common utility, look it up first (see API Lookup Rule).
-- **Don't assert performance conclusions without measuring** — no "this is faster/slower" claims without a benchmark or profile run; propose the measurement first (see `references/optimization.md`).
+- **Don't assert performance conclusions without measuring** — no "this is faster/slower" claims without a benchmark or profile run; propose the measurement first (see `references/bench-profile.md`).
 
 For complete syntax details, see `references/language.md` (and its topic files `strings-data.md`, `errors.md`, `control-flow.md`, `traits-methods.md`). For `moon` tooling, see `references/toolchain.md` and `references/moon-ide.md`.

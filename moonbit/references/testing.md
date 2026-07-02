@@ -1,77 +1,53 @@
-# Benchmarks and Output Snapshots
+# MoonBit Testing Guide
 
-For `inspect()` / `debug_inspect()` / `json_inspect()` snapshot tests, see `toolchain.md`. This file covers two specialized testing tools that aren't `inspect`-based:
+Correctness testing: snapshot tests with the `inspect` family, black-box
+defaults, docstring tests, full-output snapshots (`@test.T::snapshot`), and
+error handling in tests. Related files: `moon test` command flags and coverage
+commands are in `toolchain.md`; performance measurement (`@bench.T`,
+profiling) is in `bench-profile.md`.
 
-- **`@bench.T`** — performance measurement with statistical reporting
-- **`@test.T::snapshot`** — full-output snapshots for codegen, parsers, image renderers, etc.
+## Snapshot tests with the `inspect` family
 
-## Benchmarking with `@bench.T`
+Snapshot tests are preferred — easy to update when behavior changes.
 
-A test block whose argument is `@bench.T` is run by `moon test` as a benchmark — `moon` reports timing statistics.
+- **Snapshot tests**: write `inspect(value)` / `debug_inspect(value)` / `json_inspect(value)`, then run `moon test --update` (or `-u`) to fill in `content=`.
+  - `inspect()` for values that implement `Show` (primitives, or types with a manual `impl Show`)
+  - `debug_inspect()` for any type that derives `Debug` — the default for your own data types
+  - `json_inspect()` for complex nested structures (uses `ToJson`, more readable output; `@json.inspect` is its deprecated old name — call it without a package prefix)
+  - Encouraged to inspect the **whole return value** when it's not huge — makes tests simple. Derive `Debug` and/or `ToJson` (or `impl Show`) on `YourType` accordingly.
+- **Update workflow**: after changing code that affects output, run `moon test --update`, review diffs in test files.
+- **Black-box by default**: call only public APIs via `@package.fn`. Use white-box tests (`*_wbtest.mbt`) only when private members matter.
+- **Grouping**: Combine related checks in one `test "..." { ... }` block for speed and clarity.
+- **Panics**: Name tests with prefix `test "panic ..." {...}`. If the call returns a value, wrap it with `ignore(...)` to silence warnings.
+- **Comparing two computed values** is `@debug.assert_eq` — `inspect(x, content=...)` / `debug_inspect` are for literal expected content; never interpolate the expected value into `content="\{y}"`.
 
-```mbt nocheck
-fn fib(n : Int) -> Int {
-  if n < 2 { return n }
-  fib(n - 1) + fib(n - 2)
+## Docstring tests
+
+Public APIs are encouraged to have docstring tests:
+
+````mbt check
+///|
+/// Get the largest element of a non-empty `Array`.
+///
+/// # Example
+/// ```mbt check
+/// test {
+///   inspect(sum_array([1, 2, 3, 4, 5, 6]), content="21")
+/// }
+/// ```
+///
+/// # Panics
+/// Panics if `xs` is empty.
+pub fn sum_array(xs : Array[Int]) -> Int {
+  xs.fold(init=0, (a, b) => a + b)
 }
+````
 
-test (b : @bench.T) {
-  b.bench(fn() { b.keep(fib(20)) })
-}
-```
+MoonBit code in docstrings is type-checked and tested automatically (via `moon test --update`). In docstrings, `mbt check` blocks should only contain `test` or `async test`.
 
-Output:
-
-```
-time (mean ± σ)         range (min … max)
-  21.67 µs ±   0.54 µs    21.28 µs …  23.14 µs  in 10 ×   4619 runs
-```
-
-`10 × 4619` — outer count × inner iteration count. The inner number is auto-tuned. Override the outer with `count`:
-
-```mbt nocheck
-test (b : @bench.T) {
-  b.bench(fn() { b.keep(fib(20)) }, count=20)
-}
-```
-
-### `b.keep(...)` is mandatory for pure functions
-
-Without `b.keep`, the optimizer drops the call. `b.keep` is a method on `@bench.T` — there is no free-standing `keep` function.
-
-### Batch comparison
-
-Multiple `b.bench` calls in one test block compare implementations side-by-side:
-
-```mbt nocheck
-test (b : @bench.T) {
-  b.bench(name="naive_fib", fn() { b.keep(fib(20)) })
-  b.bench(name="fast_fib",  fn() { b.keep(fast_fib(20)) })
-}
-```
-
-```
-name      time (mean ± σ)         range (min … max)
-naive_fib   21.01 µs ±   0.21 µs    20.76 µs …  21.32 µs  in 10 ×   4632 runs
-fast_fib     0.02 µs ±   0.00 µs     0.02 µs …   0.02 µs  in 10 × 100000 runs
-```
-
-### Raw stats for further analysis
-
-`@bench.single_bench` returns a `Summary` with min/max/mean/median/quartiles/stddev — JSON-serializable. Useful for plotting or regression detection in CI.
-
-```mbt nocheck
-fn collect_bench() -> Unit {
-  let mut saved = 0
-  let summary : @bench.Summary = @bench.single_bench(name="fib", fn() {
-    saved = fib(20)
-  })
-  println(saved)                                       // touch saved so it's not dropped
-  println(summary.to_json().stringify(escape_slash=true, indent=4))
-}
-```
-
-Time units in the summary are microseconds. The `Summary` type's exact shape is not stability-guaranteed — treat it as observable JSON.
+`*.mbt.md` files are also black-box test files — code blocks tagged
+` ```mbt check ` run under `moon check` / `moon test`. See "README.mbt.md
+generation" in `toolchain.md`.
 
 ## Full-output snapshots with `@test.T::snapshot`
 
@@ -103,6 +79,9 @@ test "record anything" (t : @test.T) {
 - Snapshots are checked into version control alongside the test.
 
 ## Error handling in tests
+
+- **Expected success**: call the raising function directly — if it unexpectedly raises, the test fails with the actual error.
+- **Expected failure**: `try f() catch { err => inspect(err) } noraise { _ => fail("expected to fail") }`.
 
 **Never use `abort(...)` in a test** — not even for a "this can't happen" branch
 (e.g. an unreachable arm added only to make a `catch` exhaustive). `abort` panics

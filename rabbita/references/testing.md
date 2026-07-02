@@ -17,13 +17,16 @@ test "update is pure: ToggleTerminal is idempotent" {
   let emit = test_emit()
   let (_, result1) = update(emit, ToggleTerminal, model)
   let (_, result2) = update(emit, ToggleTerminal, model)
-  // Same input, same output — always
-  assert_eq(result1.term_state, result2.term_state)
-  assert_eq(result1.terminal_height, result2.terminal_height)
+  // Same input, same output — always.
+  // Plain-data fields: two computed values → @debug.assert_eq (per the moonbit skill).
+  @debug.assert_eq(result1.terminal_height, result2.terminal_height)
+  // FFI-handle-bearing state (@js.Value has no meaningful Eq — don't derive Eq
+  // just for tests): assert the shape with patterns instead.
+  assert_true(result1.term_state is Hidden(_) && result2.term_state is Hidden(_))
 }
 ```
 
-**Do this for every message handler that touches FFI objects.** Compare every field the handler modifies.
+**Do this for every message handler that touches FFI objects.** Compare every field the handler modifies — plain data via `@debug.assert_eq`, handle-bearing enums via `is` patterns.
 
 ## Test 2: Dummy object trap (REQUIRED for handlers touching FFI objects)
 

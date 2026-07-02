@@ -223,4 +223,4 @@ Use views for:
 - Passing slices without allocation
 - Avoiding copies of large sequences
 
-Convert back with `.to_string()`, `.to_bytes()`, `.to_array()` when you need ownership.
+Convert back with `.to_owned()` when you need ownership (works on all view types). Do NOT use `.to_string()` (deprecated `Show` display path on views) or `.to_array()` for this — see the `trim`/`StringView` section in `language.md`.

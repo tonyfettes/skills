@@ -92,8 +92,8 @@ fn Style::with_flags(self : Style, flags : UInt) -> Style { { ..self, flags, } }
 Single-field struct newtypes wrapping a closure type are **directly callable**:
 
 ```mbt nocheck
-pub struct Dispatch[Msg]((Msg) -> Cmd)
-// Call: dispatch(Increment)  — NOT (dispatch.0)(Increment)
+pub struct Emit[Msg]((Msg) -> Cmd)
+// Call: emit(Increment)  — NOT (emit.0)(Increment)
 ```
 
 ### No cross-package extension methods
@@ -192,7 +192,8 @@ if text.offset_of_nth_char(max) is Some(offset) {
 
 ### `trim`/slicing return `StringView`, not `String`
 
-`String::trim`, `trim_start`, `trim_end`, `trim_space`, and `[a:b]` slicing all
+`String::trim`, `trim_start`, `trim_end` (`trim_space` is deprecated — use
+`trim`), and `[a:b]` slicing all
 return a **`StringView`** (a borrowed slice — no allocation), not a `String`:
 
 ```mbt nocheck

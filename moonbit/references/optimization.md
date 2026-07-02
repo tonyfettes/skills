@@ -42,22 +42,9 @@ two lowering stages (moonc → C → clang/gcc). The workflow:
 ## Profile first; the bottleneck is usually not what you're staring at
 
 Never assert that a change is faster or slower without a benchmark or profile
-run — propose the measurement first, then conclude. This applies to review
-comments and design discussions, not just committed optimizations.
-
-```sh
-moon run ./bench/<name> --release --target native --profile
-```
-Read **"Top self time"** and especially **"Runtime leaf costs attributed to
-MoonBit callers"** — the latter pins `moonbit_incref/decref_inlined` samples
-onto the MoonBit function whose machine code contains them (incref/decref
-inline into the caller, so a `callee <- moonbit_decref_inlined` line means
-the cost lives in `callee`'s body, often from a *different* source function
-that clang inlined into it).
-
-Profiling is noisy at a few hundred 1 ms samples. For an honest before/after,
-`git stash` the change, rebuild, run the bench **3–4×**, then pop and run
-3–4× again, comparing means. A single baseline run will mislead you.
+run — propose the measurement first, then conclude. How to measure —
+`@bench.T` harness, `moon run --profile`, reading leaf-cost attribution, and
+the 3–4-runs before/after methodology — is in `bench-profile.md`.
 
 ## Pitfall 1 — refcount traffic on the per-element hot path
 

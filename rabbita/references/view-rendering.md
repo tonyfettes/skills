@@ -9,7 +9,7 @@ Rabbita has no keyed diff. Children of a node are diffed positionally: if a cond
 Rules:
 
 - **Render conditional siblings AFTER stable stateful elements** (inputs, textareas, anything holding focus/DOM state). A completion menu toggled above the composer's textarea steals focus mid-keystroke; appended last, it never shifts the textarea's index.
-- If ordering can't put the stateful element first visually, keep the slot stable — render `@html.nothing`-style placeholders is NOT an option for void slots (see below); instead keep the element always present and toggle CSS visibility, or restructure the tree.
+- If ordering can't put the stateful element first visually, keep sibling indices stable another way: keep the conditional element always present and toggle CSS visibility, or restructure the tree. Do NOT rely on an `@html.nothing` placeholder to hold the slot. (Void elements can't take children at all — see below.)
 
 ## `view` must be total — one raise kills the render loop permanently
 

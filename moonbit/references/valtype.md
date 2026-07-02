@@ -47,7 +47,7 @@ struct/enum is a **reference** (a pointer).
 
 ### `#valtype` struct
 
-Two restrictions:
+Three restrictions:
 
 1. **All fields must be immutable** — a single `mut` field is rejected with
    `Value type is not allowed for struct with mutable field`. A value type is

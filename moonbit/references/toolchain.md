@@ -96,43 +96,9 @@ Output `README.mbt.md` in the package directory.
 
 ## Testing guide
 
-Snapshot tests are preferred — easy to update when behavior changes.
-
-- **Snapshot tests**: write `inspect(value)` / `debug_inspect(value)` / `json_inspect(value)`, then run `moon test --update` (or `-u`) to fill in `content=`.
-  - `inspect()` for values that implement `Show` (primitives, or types with a manual `impl Show`)
-  - `debug_inspect()` for any type that derives `Debug` — the default for your own data types
-  - `json_inspect()` for complex nested structures (uses `ToJson`, more readable output; `@json.inspect` is its deprecated old name — call it without a package prefix)
-  - Encouraged to inspect the **whole return value** when it's not huge — makes tests simple. Derive `Debug` and/or `ToJson` (or `impl Show`) on `YourType` accordingly.
-- **Update workflow**: after changing code that affects output, run `moon test --update`, review diffs in test files.
-- **Black-box by default**: call only public APIs via `@package.fn`. Use white-box tests (`*_wbtest.mbt`) only when private members matter.
-- **Grouping**: Combine related checks in one `test "..." { ... }` block for speed and clarity.
-- **Panics**: Name tests with prefix `test "panic ..." {...}`. If the call returns a value, wrap it with `ignore(...)` to silence warnings.
-- **Errors**: For expected success, call the raising function directly — if it unexpectedly raises, the test fails with the actual error. For expected failure, use `try f() catch { err => inspect(err) } noraise { _ => fail("expected to fail") }`.
-- **Failure priority**: never `abort` in a test. Prefer re-raising (let the error propagate so the test fails with the actual error); use `fail(...)` only when propagation is impossible (e.g. inside a `guard ... else`).
-
-### Docstring tests
-
-Public APIs are encouraged to have docstring tests:
-
-````mbt check
-///|
-/// Get the largest element of a non-empty `Array`.
-///
-/// # Example
-/// ```mbt check
-/// test {
-///   inspect(sum_array([1, 2, 3, 4, 5, 6]), content="21")
-/// }
-/// ```
-///
-/// # Panics
-/// Panics if `xs` is empty.
-pub fn sum_array(xs : Array[Int]) -> Int {
-  xs.fold(init=0, (a, b) => a + b)
-}
-````
-
-MoonBit code in docstrings is type-checked and tested automatically (via `moon test --update`). In docstrings, `mbt check` blocks should only contain `test` or `async test`.
+Moved to `testing.md` — snapshot tests with the `inspect` family, black-box
+defaults, docstring tests, `@test.T::snapshot` full-output snapshots, and
+error handling in tests. Benchmarks and profiling: `bench-profile.md`.
 
 ## Spec-driven development
 
@@ -373,83 +339,10 @@ To add `fib` under the module root:
 
 ### Async IO
 
-Asynchronous programming uses compiler support plus the `moonbitlang/async`
-runtime. Prefer the native backend for async IO; WebAssembly support is not
-available for async IO-oriented packages.
-
-Discover the API before coding: after `moon add moonbitlang/async@<version>`,
-explore it with `moon ide doc "@async"` (and subpackages like
-`moon ide doc "@async/stdio"`). For exact signatures, read the pinned version's
-`pkg.generated.mbti` under `${MOON_HOME}/registry/cache/moonbitlang/async/<version>.zip`
-(see the "API Lookup Rule" in `SKILL.md`). Subpackages — `@async` (tasks,
-timers, cancellation), `@async/aqueue`, `@async/fs`, `@async/stdio`,
-`@async/websocket`, … — must each be imported separately in `moon.pkg`.
-
-1. Add the dependency and pin the native target in `moon.mod`:
-   ```
-   import {
-     "moonbitlang/async@0.18.1",
-   }
-
-   options(
-     "preferred-target": "native",
-   )
-   ```
-2. In the executable's `moon.pkg`, set `is-main`, restrict to native, and import
-   what you need:
-   ```
-   import {
-     "moonbitlang/async",
-     "moonbitlang/async/stdio",
-   }
-   supported_targets = "native"
-   options(
-     "is-main": true,
-   )
-   ```
-3. Define `async fn main` and call async functions normally. There is no
-   `await` keyword. Spawn concurrent tasks via `with_task_group` for structured
-   concurrency:
-   ```mbt nocheck
-   ///|
-   async fn main {
-     @async.with_task_group(group => {
-       group.spawn_bg(() => {
-         @async.sleep(50)
-         @stdio.stdout.write("A\n")
-       })
-       group.spawn_bg(() => {
-         @async.sleep(20)
-         @stdio.stdout.write("B\n")
-       })
-     })
-   }
-   ```
-
-`with_task_group` guarantees every spawned task has terminated when it returns.
-If a spawned task fails without `allow_failure=true`, peer tasks are cancelled
-and the error propagates. Cancelled tasks do not trigger peer cancellation by
-themselves.
-
-For `spawn_bg` / `spawn` closures, use `() => { ... }` or `async fn() { ... }`.
-Avoid `fn() { ... }` because it triggers deprecated async syntax warnings.
-Forms like `async () => ...`, `fn() async { ... }`, and `fn(args) async { ... }`
-are parse errors.
-
-Use `async test` for tests that call async functions. The package containing
-the test must import `moonbitlang/async` for the relevant test mode:
-
-```
-import {
-  "moonbitlang/async",
-  "moonbitlang/async/stdio",
-} for "test"
-```
-
-Async tests run in parallel by default. Avoid shared ports, files, environment
-variables, and global mutable state unless each test isolates its resources.
-Run with `moon test --target native` unless `moon.mod` sets
-`"preferred-target": "native"`.
+Moved to `async.md` — runtime setup (`moon.mod`/`moon.pkg` for
+`moonbitlang/async`), `with_task_group` structured concurrency, spawn closure
+syntax, `async test` configuration, cancellation-safe cleanup, and pipeline
+backpressure.
 
 ## Library docs lookup
 
@@ -463,7 +356,20 @@ Run with `moon test --target native` unless `moon.mod` sets
 
 ## Conditional compilation
 
-Target specific backends/modes in `moon.pkg.json`:
+Gate individual `.mbt` files to backends/modes. In modern `moon.pkg` DSL,
+`targets` goes inside `options(...)`:
+
+```
+options(
+  targets: {
+    "wasm_only.mbt": ["wasm"],
+    "js_only.mbt": ["js"],
+    "not_js.mbt": ["not", "js"],
+  },
+)
+```
+
+Legacy `moon.pkg.json` equivalent:
 
 ```json
 {
@@ -484,6 +390,25 @@ Available conditions:
 - **Logical operators**: `"and"`, `"or"`, `"not"`
 
 ## Link configuration
+
+In modern `moon.pkg` DSL, use a top-level `link(...)` block. The native form is
+well-established (see `c-ffi.md` / `c-ffi-including-sources.md`):
+
+```
+link(
+  native(
+    "cc-flags": "-I/path/to/include",
+    "cc-link-flags": "-L/path/to/lib -lmylib",
+  )
+)
+```
+
+For the full per-backend option set (wasm/js exports, memory options, output
+format), the legacy JSON keys below are the reference; when writing them in
+`moon.pkg` DSL, verify the spelling with `moon check` before committing rather
+than guessing.
+
+Legacy `moon.pkg.json`:
 
 ```json
 {
@@ -556,7 +481,9 @@ Run `moonc build-package -warn-help` to see all available warnings.
 
 ## Pre-build commands
 
-Embed external files as MoonBit code:
+Embed external files as MoonBit code. (Shown in legacy `moon.pkg.json` form —
+if the package uses the `moon.pkg` DSL, verify the current `pre-build` DSL
+spelling with `moon check` rather than guessing.)
 
 ```json
 {

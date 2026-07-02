@@ -335,7 +335,7 @@ moon run --target native scripts/run-asan.mbtx -- \
   --pkg main/moon.pkg
 ```
 
-The `run-asan.mbtx` and `run-asan.py` scripts live under the skill's `scripts/` directory. See `c-ffi-asan.md` for details.
+The `run-asan.mbtx` script lives under the skill's `scripts/` directory. See `c-ffi-asan.md` for details.
 
 ## Decision table
 

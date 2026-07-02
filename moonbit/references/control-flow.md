@@ -186,9 +186,6 @@ fn with_raw_mode(term : Terminal) -> Unit raise {
 Prefer `defer` over duplicating cleanup in both the success path and a `catch`
 branch.
 
-In `moonbitlang/async`, cancellation is delivered as a raised error at
-suspension points, so `defer`/`catch` blocks do run on cancellation — but any
-**async operation inside the cleanup** is itself cancelled immediately while
-the task is being cancelled. Must-complete async cleanup needs
-`@async.protect_from_cancel` (sparingly — it breaks `with_timeout`; pair with a
-hard timeout) or `TaskGroup::add_defer` with the same protection inside.
+In `moonbitlang/async`, `defer` does run on cancellation, but async operations
+inside the cleanup are themselves cancelled — cancellation-safe cleanup
+(`@async.protect_from_cancel` and its refinements) is covered in `async.md`.
