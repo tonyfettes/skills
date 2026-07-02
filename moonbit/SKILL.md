@@ -231,7 +231,7 @@ my_module
 - **Don't forget `mut` for mutable record fields** — immutable by default (Arrays typically do NOT need `mut` unless completely reassigning the variable; `push` etc. do not require it)
 - **Don't ignore error handling** — errors must be explicitly handled
 - **Do not introduce `abort` without explicit user approval** — before writing MoonBit code that calls `abort`, pause and ask the user to confirm that aborting is the intended behavior. Only use `abort` after that confirmation; otherwise model the failure with a typed error/`raise`, `Result`, or an approved adapter.
-- **Do not write `guard` without `else` without explicit user approval** — `guard cond` / `guard x is Pattern` with no `else` panics at runtime when the condition fails; treat it with the same severity as `abort`. Default to `guard ... else { ... }` with an early return, typed error, or fallback.
+- **Do not write `guard` without `else` without explicit user approval** — `guard cond` / `guard x is Pattern` with no `else` panics at runtime when the condition fails; treat it with the same severity as `abort`. Default to `guard ... else { ... }` with an early return, typed error, or fallback. In tests too: prefer raising via `guard ... else { fail("...") }` over panicking.
 - **Don't `match` an Option** — use `x.unwrap_or(...)` (and friends) for trivial defaults, `if x is Some(v) { ... } else { ... }` for branching, or `guard x is Some(v) else { ... }` for early exit. Reserve `match` for enums with several meaningful arms.
 - **Don't swallow all async errors** — in async code, never write a catch-all
   branch like `catch { _ => () }`. If a catch-all is genuinely needed for a

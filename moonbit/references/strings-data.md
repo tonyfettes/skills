@@ -68,8 +68,9 @@ test "string indexing and utf8 encode/decode" {
   guard b0 is ('\n' | 'h' | 'b' | 'a'..='z') && s is [.. "hello", .. rest] else {
     fail("unexpected string content")
   }
-  guard rest is " world"                   // ⚠️ no `else` → panics on mismatch; OK in a test,
-                                           // but in app code needs user sign-off (see language.md)
+  guard rest is " world" else {            // always write the else — even in tests,
+    fail("unexpected suffix: \{rest}")     // raise via fail(...) instead of panicking
+  }
 
   let b1 : Char? = s.get_char(0)
   assert_true(b1 is Some('a'..='z'))

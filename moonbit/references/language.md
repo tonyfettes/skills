@@ -148,6 +148,10 @@ guard queue.pop() is Some(job) else { return }   // ✓ explicit failure path
 guard queue.pop() is Some(job)                   // ✗ panics if empty — needs user sign-off
 ```
 
+This applies **in tests too** — prefer raising over panicking, e.g.
+`guard parsed is Some(v) else { fail("parse failed: \{input}") }`, not a bare
+`guard parsed is Some(v)`.
+
 ### String indexing is UTF-16; slicing can crash
 
 `String[i]` returns a `UInt16` (UTF-16 code unit), NOT a `Char`:
