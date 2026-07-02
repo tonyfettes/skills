@@ -167,3 +167,28 @@ test "labelled break" {
   assert_eq(seen, 2)
 }
 ```
+
+## `defer` — scope-exit cleanup
+
+MoonBit has `defer` (there is no `finally`). `defer expr` / `defer { ... }`
+registers cleanup that runs when the enclosing scope exits — on normal exit
+and when an error propagates. Multiple defers run in FILO order:
+
+```mbt nocheck
+fn with_raw_mode(term : Terminal) -> Unit raise {
+  term.enter_raw_mode()
+  defer term.leave_raw_mode()      // runs even if body raises
+  defer { log.write_string("bye") } // block form; runs before the line above
+  run_body(term)
+}
+```
+
+Prefer `defer` over duplicating cleanup in both the success path and a `catch`
+branch.
+
+In `moonbitlang/async`, cancellation is delivered as a raised error at
+suspension points, so `defer`/`catch` blocks do run on cancellation — but any
+**async operation inside the cleanup** is itself cancelled immediately while
+the task is being cancelled. Must-complete async cleanup needs
+`@async.protect_from_cancel` (sparingly — it breaks `with_timeout`; pair with a
+hard timeout) or `TaskGroup::add_defer` with the same protection inside.

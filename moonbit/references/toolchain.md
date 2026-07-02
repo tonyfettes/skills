@@ -108,6 +108,7 @@ Snapshot tests are preferred — easy to update when behavior changes.
 - **Grouping**: Combine related checks in one `test "..." { ... }` block for speed and clarity.
 - **Panics**: Name tests with prefix `test "panic ..." {...}`. If the call returns a value, wrap it with `ignore(...)` to silence warnings.
 - **Errors**: For expected success, call the raising function directly — if it unexpectedly raises, the test fails with the actual error. For expected failure, use `try f() catch { err => inspect(err) } noraise { _ => fail("expected to fail") }`.
+- **Failure priority**: never `abort` in a test. Prefer re-raising (let the error propagate so the test fails with the actual error); use `fail(...)` only when propagation is impossible (e.g. inside a `guard ... else`).
 
 ### Docstring tests
 
@@ -196,6 +197,7 @@ repository = ""
 license = "Apache-2.0"
 keywords = []
 description = "..."
+preferred_target = "native"   # optional: default backend when none is specified
 
 import {
   "moonbitlang/x@0.4.6",

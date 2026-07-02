@@ -372,6 +372,12 @@ The `run-asan.mbtx` and `run-asan.py` scripts live under the skill's `scripts/` 
 
 8. **`extern "c" fn ... -> T?` for external objects.** The Option encoding doesn't match the raw pointer return. `None` is always returned. Use `Ref[T]` output pattern + error code instead.
 
+9. **Hand-rolling String↔Bytes/C-string conversion.** Do not write manual byte loops (`c.to_int() & 0xff`, custom `cstr` helpers) or C-side conversion helpers — always use `moonbitlang/core/encoding/utf8` for String↔Bytes at FFI boundaries.
+
+10. **Stringly-typed wrapper APIs.** Safe wrappers should return domain types (enums/structs), not `String` or tuples. A nullable C pointer type should expose `is_null()` on the pointer type itself rather than wrapping every return in `Option`. Don't prefix extern binding names with `ffi_` — name raw externs after the C symbol and keep them private.
+
+11. **Reaching for runtime `dlopen`/`dlsym` to dodge link problems.** Loading symbols at runtime instead of `link.native` config is situational — legitimate for genuinely optional dependencies, wrong as a workaround for a toolchain limitation (e.g. tcc lacking `-framework` support in debug `moon test`). Before converting an existing link-config approach to `dlopen`, discuss with the user; prefer fixing or scoping the dev loop (e.g. release-mode tests) instead.
+
 ## See also
 
 - `c-ffi-ownership.md` — ownership semantics, `#owned`/`#borrow` rules, `moonbit_incref`/`decref` operations

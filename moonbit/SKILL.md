@@ -16,7 +16,7 @@ Load the reference matching your current work BEFORE writing code:
 | Writing MoonBit syntax — core (structs/enums/newtypes, pattern matching, visibility, constants, options, label/optional params) | `references/language.md` |
 | Strings, `StringView`, UTF-16 safety, interpolation (`<+`/`<?`), `Bytes`, Arrays, `Map`, views | `references/strings-data.md` |
 | Error handling (`suberror`, `raise`/`catch`/`noraise`, `raise?`, `try`) | `references/errors.md` |
-| Loops and control flow (`for`, functional `loop`, `while`, labelled loops, loop invariants) | `references/control-flow.md` |
+| Loops and control flow (`for`, functional `loop`, `while`, labelled loops, loop invariants, `defer`) | `references/control-flow.md` |
 | Methods, traits, operator overloading, indexing operators (`#alias`) | `references/traits-methods.md` |
 | Configuring `derive(...)` — JSON enum styles, rename rules, container/case/field args | `references/derive.md` |
 | Running `moon` commands (check / build / test / fmt / info / run) | `references/toolchain.md` |
@@ -32,6 +32,18 @@ Load the reference matching your current work BEFORE writing code:
 | Binding a C library (`extern "c"`, stubs, ownership, callbacks, ASan) | `references/c-ffi.md` (+ topic-specific c-ffi-*.md) |
 | Writing standalone `.mbtx` scripts (CLI tools, subprocess, FS, JSON, regex) | `references/mbtx.md` |
 | Conditional compilation, link configuration, pre-build commands, warning control | `references/toolchain.md` |
+
+## Top recurring mistakes — check before every edit
+
+Mined from real session history; these caused the most compiler pushback by far:
+
+1. **Every `Warning (deprecated)` is a must-fix.** The warning text names the replacement — apply it on the spot. Never hand off a change with deprecation warnings remaining.
+2. **Don't use reserved words as identifiers or field names**: `method`, `ref`, `opaque`, `member`, ... Rename with a trailing underscore (`method_`) and keep wire names via derive rename arguments.
+3. **`pub` (non-`pub(all)`) types are read-only outside their package** — black-box `_test.mbt` files cannot construct them either. Before tightening `pub(all)` → `pub`, grep tests and consumers for constructor uses; provide factory functions or keep `pub(all)`.
+4. **Non-`Unit` results cannot be silently discarded** — wrap intentional discards in `ignore(...)`; first ask why the result is unused.
+5. **Write `!expr`, not `not(expr)`** (deprecated).
+6. **Materialize a `StringView` with `.to_owned()`, never `.to_string()`** (that's the deprecated `Show` display path).
+7. **Constructors are type-named now**: `Ref(x)` not `@ref.new(x)`; `Map([], capacity=...)` not `Map::new(...)`; `Set([])` not `Set::new()`; `b"..."` for `Bytes` literals; `to_owned` not `to_array`; `trim()` not `trim_space`; `@string.parse_double` not `@strconv.parse_double`.
 
 ## API Lookup Rule
 
@@ -123,6 +135,13 @@ readability checks across the touched file, not just the exact commented line:
 - Do not keep helpers that only return a constant, wrap a single obvious
   expression, or rename a trivial mutation. Inline them unless the helper
   enforces an invariant or names a real domain action.
+- Prefer labeled/optional arguments on constructor functions over `.with_*`
+  builder chains — `T::new(bg~, label?)`, not `T::new().with_bg(bg).with_label(l)`.
+- Prefer `ArrayView`/`BytesView`/`StringView` parameters over defensive
+  `copy()`/`to_owned()` — document aliasing in the docstring instead of cloning,
+  especially on hot paths.
+- Build strings with interpolation or a `StringBuilder`, not `+` concatenation
+  chains or several parallel `mut String` accumulators.
 - Do not introduce tuple destructuring merely to save a few lines. Prefer
   named locals or direct branches when values have separate meanings, especially
   in configuration and environment plumbing. Use tuples only when the grouped
@@ -229,9 +248,11 @@ my_module
 
 - **Don't use uppercase for variables/functions** — compilation error
 - **Don't forget `mut` for mutable record fields** — immutable by default (Arrays typically do NOT need `mut` unless completely reassigning the variable; `push` etc. do not require it)
+- **Don't add `mut` speculatively either** — a field/binding gets `mut` only when a reassignment actually exists; `unused_mut` warnings must be cleaned up
 - **Don't ignore error handling** — errors must be explicitly handled
 - **Do not introduce `abort` without explicit user approval** — before writing MoonBit code that calls `abort`, pause and ask the user to confirm that aborting is the intended behavior. Only use `abort` after that confirmation; otherwise model the failure with a typed error/`raise`, `Result`, or an approved adapter.
 - **Do not write `guard` without `else` without explicit user approval** — `guard cond` / `guard x is Pattern` with no `else` panics at runtime when the condition fails; treat it with the same severity as `abort`. Default to `guard ... else { ... }` with an early return, typed error, or fallback. In tests too: prefer raising via `guard ... else { fail("...") }` over panicking.
+- **Test failure priority: re-raise > `fail` > never `abort`** — in tests, prefer letting the error propagate (the test fails with the actual error); use `fail(...)` only when propagation is impossible; never `abort` in a test.
 - **Don't `match` an Option** — use `x.unwrap_or(...)` (and friends) for trivial defaults, `if x is Some(v) { ... } else { ... }` for branching, or `guard x is Some(v) else { ... }` for early exit. Reserve `match` for enums with several meaningful arms.
 - **Don't swallow all async errors** — in async code, never write a catch-all
   branch like `catch { _ => () }`. If a catch-all is genuinely needed for a
@@ -253,9 +274,16 @@ my_module
 - **Don't `derive(Show)` for debugging** — derive `Debug` and use `debug_inspect()` for test/diagnostic output (`\{to_repr(value)}` for interpolation of composed values). Reserve a manual `impl Show` for specialized display formats (JSON, XML, domain text)
 - **Don't call `@json.inspect()`** — use the prelude `json_inspect(value, ...)` without a package prefix
 - **Async** — MoonBit has no `await` keyword; do not add it. Async functions/tests are marked with the `async` prefix (e.g. `[pub] async fn ...`, `async test ...`). Async functions default to raising, so do not add `raise`; add `noraise` only when the async body must not raise.
-- **No `finally`** in MoonBit — handle cleanup in both try success and catch paths
+- **No `finally`** in MoonBit — use `defer expr` / `defer { ... }` for scope-exit cleanup (runs on normal exit and when an error propagates); see `references/control-flow.md`
+- **Cancellation-critical async cleanup** — in `moonbitlang/async`, cancellation arrives as a raised error at suspension points, so `catch`/`defer` blocks themselves DO run; but while a task is being cancelled, any **async operation inside the cleanup** is itself cancelled immediately. Must-complete async cleanup (terminal-state restore, external-resource release) needs `@async.protect_from_cancel` (use sparingly — it breaks `with_timeout`; pair with a hard timeout) or `TaskGroup::add_defer` with the same protection inside.
 - **No cross-package extension methods** — you cannot define `@otherpkg.Type::method` from outside that type's own package. Use free functions or define a trait and `impl Trait for @otherpkg.Type` instead.
 - **Do NOT use context7** for MoonBit library lookups — MoonBit packages aren't indexed there. Use `moon ide doc`, mooncakes.io, the moon registry cache (`~/.moon/registry/cache/`), `.mbti` files, or the library's source/GitHub instead.
-- **Don't use `moonbitlang/x` for IO** (e.g. `moonbitlang/x/fs` file read/write) — always prefer `moonbitlang/async` for filesystem, network, and other IO. Only reach for `moonbitlang/x` IO when the user explicitly asks for it. `moonbitlang/x` is a staging/experimental grab-bag; its IO surface is not the supported path.
+- **Avoid `moonbitlang/x` when a `core`/`async` equivalent exists** — `moonbitlang/x` is a staging/experimental grab-bag. IO (fs, network) → `moonbitlang/async`; encoding → `moonbitlang/core/encoding`. Exception: `moonbitlang/x/path` for pure path manipulation is fine and preferred over hand-rolled string splitting. Only reach for other `x` packages when the user explicitly asks.
+- **Legacy declaration syntax to avoid**: `typealias B as A` (use `type Alias = T` or `#alias(...)`); `suberror E T` payload shorthand (use `suberror E { E(T) }`); un-annotated async/raising lambdas — effect inference is deprecated, mark lambdas `async`/`raise` explicitly.
+- **Postfix `catch` can't be a bare scrutinee** — `match f() catch { ... } { ... }` is a parse error; wrap in parentheses or bind with `let` first.
+- **Don't use deprecated `Json` accessors** (`.value(key)`, `.as_string()`, ...) — pattern-match instead: `if json is Object(obj) { obj.get(key) }`, `if json is String(s) { ... }`.
+- **`#valtype` has hard limits** (currently ≤6 fields, no `mut` fields, no abstract-type fields, no nested value types — limits may be relaxed in future compiler releases) — check `references/valtype.md` before annotating.
+- **Search core before hand-rolling utilities** — case-insensitive compare is `equal_ignore_ascii_case`, substring scan is `String::contains_any`, clamping is `Int::clamp`, String↔Bytes is `moonbitlang/core/encoding/utf8`. If it feels like a common utility, look it up first (see API Lookup Rule).
+- **Don't assert performance conclusions without measuring** — no "this is faster/slower" claims without a benchmark or profile run; propose the measurement first (see `references/optimization.md`).
 
 For complete syntax details, see `references/language.md` (and its topic files `strings-data.md`, `errors.md`, `control-flow.md`, `traits-methods.md`). For `moon` tooling, see `references/toolchain.md` and `references/moon-ide.md`.

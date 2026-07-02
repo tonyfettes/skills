@@ -8,7 +8,7 @@ This file covers the core: gotchas, visibility, user-defined types, pattern matc
 |---|---|
 | Primitives, `Bytes`, Arrays, `String`/`StringView` (UTF-16 safety, interpolation, `<+`/`<?`), `Map`, views | `strings-data.md` |
 | Error handling (`suberror`, `raise`/`catch`/`noraise`, `raise?`, `try`) | `errors.md` |
-| Control flow (`for` / functional `loop` / `while` / labelled loops, loop invariants) | `control-flow.md` |
+| Control flow (`for` / functional `loop` / `while` / labelled loops, loop invariants, `defer`) | `control-flow.md` |
 | Methods, traits, operator overloading, indexing via `#alias` | `traits-methods.md` |
 
 ---

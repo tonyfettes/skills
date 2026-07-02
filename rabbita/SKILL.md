@@ -1,6 +1,6 @@
 ---
 name: rabbita
-description: Use when writing or modifying update functions in Rabbita (Elm-architecture) MoonBit apps, creating FFI binding packages for Rabbita, designing Rabbita model types, or writing tests for Rabbita update handlers. Use when touching code that handles messages, modifies model, or interacts with JS FFI inside update.
+description: Use when writing or modifying update functions or views in Rabbita (Elm-architecture) MoonBit apps, creating FFI binding packages for Rabbita, designing Rabbita model types, debugging rendering/focus/scroll issues, or writing tests for Rabbita update handlers. Use when touching code that handles messages, modifies model, builds @html views, or interacts with JS FFI inside update.
 ---
 
 # Rabbita
@@ -40,6 +40,7 @@ Load the reference matching your current work BEFORE writing code:
 | Using built-in effect packages, or binding a new JS library (dummy constructors, private externs, Cmd-returning API, wiring JS events back into the update loop via `Emit`, command constructor reference, package checklist) | `references/ffi-packages.md` |
 | Designing or refactoring `Model` types (immutable collections, state enums, spotting hidden state machines, what must never live in a model) | `references/model-design.md` |
 | Writing tests for update handlers (idempotence, dummy object trap, state transitions, test helpers) | `references/testing.md` |
+| Writing or debugging views (positional vdom diffing & focus loss, view totality, per-dispatch cost, `@html` element surface, void elements, auto-scroll, embedding foreign DOM widgets) | `references/view-rendering.md` |
 
 ## Message Design: Namespace by Subsystem
 
@@ -66,6 +67,16 @@ Wire subsystem emits at the call site with `emit.map`: `@xterm.mount("terminal",
 
 When a subsystem grows beyond ~5 messages or is likely to be reused, extract it into its own package with its own `Msg`.
 
+Label every non-obvious `Msg` payload — `AgentProgress(run_id~ : Int, Event)`, not a bare positional `Int`. Name FFI/subsystem packages by domain (`alert`, `bridge`, `xterm`), never with an `_ffi` suffix.
+
+## View & Rendering Rules (see `references/view-rendering.md`)
+
+1. Rabbita diffs children **by index, not by key** — render conditional siblings AFTER stable stateful elements (inputs/textareas), or toggling them rebuilds those nodes and drops focus.
+2. `view` must be **total**: one raise permanently kills the render loop. Guard any parser fed partial/streaming input.
+3. Every dispatch re-runs the whole `view` — cache expensive derivations (parsed ASTs, layouts) in the Model at message time, never compute them in view.
+4. Void elements (`hr`, `br`, `img`, `input`) take **zero** children (rabbita ≥0.12.4) — no trailing `@html.nothing`.
+5. `on_click` exists only on some elements (`div`, `button` — not `a`/`span`); check the `.mbti`. Clickable text is a styled `button`. Since `on_click` takes an erased `Cmd`, subpackages accept `(payload) -> Cmd` callbacks instead of importing the root `Msg`.
+
 ## Common Mistakes
 
 | Mistake | Fix |
@@ -83,6 +94,8 @@ When a subsystem grows beyond ~5 messages or is likely to be reused, extract it 
 | New message handler without purity test | Add idempotence + dummy trap tests |
 | `Dispatch` / `cell_with_dispatch` / `@cmd.raw_effect` in new code | `Emit` / `cell` (or `cell_with_emit`) / `@cmd.custom_cmd` |
 | `@cmd.custom_cmd` inline in update | Use a built-in package, or move into an FFI package as a named Cmd function |
+| Trailing `@html.nothing` on `hr`/`br`/`img`/`input` | Void elements take zero children (rabbita ≥0.12.4) |
+| Parsing/deriving expensive data inside `view` | Cache it in the Model at message time; view reads the cache |
 
 ## Red Flags in Code Review
 
@@ -95,4 +108,6 @@ When a subsystem grows beyond ~5 messages or is likely to be reused, extract it 
 - Any method call on a JS FFI object inside update
 - New message handler without idempotence test
 - Update branch that calls a function then returns `(@rabbita.none, model)`
+- Conditional sibling rendered before a focus-holding element (index shift = focus loss)
+- A raise-capable call inside `view` without a catch-and-fallback at the boundary
 - Deprecated names (`Dispatch`, `cell_with_dispatch`, `raw_effect`) in new code

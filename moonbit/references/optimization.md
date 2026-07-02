@@ -34,6 +34,10 @@ two lowering stages (moonc → C → clang/gcc). The workflow:
 
 ## Profile first; the bottleneck is usually not what you're staring at
 
+Never assert that a change is faster or slower without a benchmark or profile
+run — propose the measurement first, then conclude. This applies to review
+comments and design discussions, not just committed optimizations.
+
 ```sh
 moon run ./bench/<name> --release --target native --profile
 ```
