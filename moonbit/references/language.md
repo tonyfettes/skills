@@ -131,7 +131,22 @@ let mapped = opt.map(v => v.field).unwrap_or(default)
 // Also: unwrap_or_else, unwrap_or_default, map_or, map_or_else
 ```
 
-Reserve full `match` for cases where each branch has real logic, not "return value / return default".
+When branches do have real logic, still don't `match` an Option — use
+`if x is Some(v) { ... } else { ... }` for branching, or
+`guard x is Some(v) else { ... }` for early exit. Reserve `match` for enums
+with several meaningful arms.
+
+### `guard` without `else` panics
+
+`guard cond` / `guard x is Pattern` with **no `else`** panics at runtime when
+the condition fails. Treat it with the same severity as `abort`: do not
+introduce it without explicit user confirmation. Default to writing the `else`
+branch — early return, typed error, or fallback value:
+
+```mbt nocheck
+guard queue.pop() is Some(job) else { return }   // ✓ explicit failure path
+guard queue.pop() is Some(job)                   // ✗ panics if empty — needs user sign-off
+```
 
 ### String indexing is UTF-16; slicing can crash
 
@@ -164,9 +179,10 @@ Do not default to `[]` indexing or `[:]` slicing for user text.
 
 ```mbt nocheck
 if !text.char_length_ge(max + 1) { return text }
-match text.offset_of_nth_char(max) {
-  Some(offset) => text.view(end_offset=offset).to_string() + "..."
-  None => text
+if text.offset_of_nth_char(max) is Some(offset) {
+  text.view(end_offset=offset).to_string() + "..."
+} else {
+  text
 }
 ```
 

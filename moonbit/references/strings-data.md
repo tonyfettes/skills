@@ -68,7 +68,8 @@ test "string indexing and utf8 encode/decode" {
   guard b0 is ('\n' | 'h' | 'b' | 'a'..='z') && s is [.. "hello", .. rest] else {
     fail("unexpected string content")
   }
-  guard rest is " world"                   // crashes on mismatch (no `else`)
+  guard rest is " world"                   // ⚠️ no `else` → panics on mismatch; OK in a test,
+                                           // but in app code needs user sign-off (see language.md)
 
   let b1 : Char? = s.get_char(0)
   assert_true(b1 is Some('a'..='z'))

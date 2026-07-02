@@ -11,16 +11,20 @@ Expressions-as-values, range/functional `for` loops, the functional `loop`, `whi
 ```mbt check
 ///|
 test "expressions return values" {
-  let (n, opt) = (1, Some(2))
+  let n = 1
   let msg : String = if n > 0 { "pos" } else { "non-pos" }
-  let res = match opt {
-    Some(x) => x + 10
-    None => 0
+  let res : String = match n {
+    0 => "zero"
+    1 => "one"
+    _ => "many"
   }
-  inspect(res, content="12")
+  inspect(res, content="one")
   inspect(msg, content="pos")
 }
 ```
+
+(Don't use a two-arm Option `match` to demonstrate this — for Options, use
+`unwrap_or` / `if x is Some(v)` / `guard x is Some(v) else`; see `language.md`.)
 
 ### Functional `for` loop
 
