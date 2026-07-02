@@ -105,9 +105,18 @@ external-resource release) needs `@async.protect_from_cancel` or
 `TaskGroup::add_defer` with the same protection inside. Refinements from
 production review:
 
-- Protect only the cancelled path — the normal path should stay cancellable,
-  or `with_timeout` can no longer abort it.
-- Bound the protected section with its own hard timeout.
+- In practice, protect only the cancelled path and leave the normal path
+  cancellable — otherwise `with_timeout` over the whole operation can no
+  longer abort it. **Know that this is a compromise, not the ideal**: if
+  cancellation arrives while the normal-path cleanup is already running, that
+  cleanup still gets cancelled. The ideal semantics for best-effort cleanup
+  would protect the cleanup on both paths, with (1) no hard timeout when the
+  task is not cancelled, (2) on cancellation mid-cleanup, the cleanup keeps
+  running but its already-elapsed time counts against the hard-timeout
+  budget, and (3) cleanup errors propagating directly. That cannot be
+  implemented correctly in user space today (it needs runtime support), which
+  is why the cancelled-path-only compromise stands.
+- Bound the protected (cancelled-path) section with its own hard timeout.
 - If the cleanup's timeout fires during error propagation, catch **only** the
   cleanup timeout and re-raise the original body error — otherwise the cleanup
   `TimeoutError` masks the real failure.
