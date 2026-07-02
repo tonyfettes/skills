@@ -2,6 +2,15 @@
 
 Authoritative syntax reference for writing MoonBit code. Load this before writing any MoonBit syntax you have not recently verified — the language has evolved, and training-era syntax is often wrong.
 
+This file covers the core: gotchas, visibility, user-defined types, pattern matching, reference semantics, and label/optional parameters. Four topics live in sibling files — load them alongside this one when relevant:
+
+| Topic | File |
+|---|---|
+| Primitives, `Bytes`, Arrays, `String`/`StringView` (UTF-16 safety, interpolation, `<+`/`<?`), `Map`, views | `strings-data.md` |
+| Error handling (`suberror`, `raise`/`catch`/`noraise`, `raise?`, `try`) | `errors.md` |
+| Control flow (`for` / functional `loop` / `while` / labelled loops, loop invariants) | `control-flow.md` |
+| Methods, traits, operator overloading, indexing via `#alias` | `traits-methods.md` |
+
 ---
 
 ## Must-know gotchas
@@ -296,210 +305,6 @@ Review `.mbti` after `moon info` with this lens:
 
 ---
 
-## Primitives: Int, Char, Byte
-
-MoonBit supports `Byte`, `Int16`, `Int`, `UInt16`, `UInt`, `Int64`, `UInt64`, `Float`, `Double`, etc. Literals overload when the type is known:
-
-```mbt check
-///|
-test "integer/char literal overloading via context" {
-  let a0 = 1 // Int by default
-  let (int, uint, uint16, int64, byte) : (Int, UInt, UInt16, Int64, Byte) = (
-    1, 1, 1, 1, 1,
-  )
-  assert_eq(int, uint16.to_int())
-  let a1 : Int = 'b'    // unicode value
-  let a2 : Char = 'b'
-}
-```
-
-### `Char` ASCII casing
-
-For ASCII-only casing, use:
-
-- `Char::to_ascii_lowercase`
-- `Char::to_ascii_uppercase`
-
-If you need full Unicode case conversion or locale-sensitive text transforms,
-do not guess or hand-roll it. Use a dedicated library only after confirming
-with the user.
-
-## Bytes (immutable)
-
-```mbt check
-///|
-test "bytes literals and indexing" {
-  let b0 : Bytes = b"abcd"
-  let b1 : Bytes = "abcd"                   // b" prefix optional when type known
-  let b2 : Bytes = [0xff, 0x00, 0x01]       // array literal overloading
-  guard b0 is [b'a', ..] && b0[1] is b'b' else {
-    fail("unexpected bytes content")
-  }
-}
-```
-
-## Array (resizable), FixedArray, ReadOnlyArray, ArrayView
-
-```mbt check
-///|
-test "array literals" {
-  let a0 : Array[Int] = [1, 2, 3]           // resizable
-  let a1 : FixedArray[Int] = [1, 2, 3]      // fixed size
-  let a2 : ReadOnlyArray[Int] = [1, 2, 3]
-  let a3 : ArrayView[Int] = [1, 2, 3]
-}
-```
-
-## String (immutable UTF-16)
-
-`s[i]` returns a **code unit (UInt16)** — NOT a Char. Use `s.get_char(i)` for `Char?`.
-
-```mbt check
-///|
-test "string indexing and utf8 encode/decode" {
-  let s = "hello world"
-  let b0 : UInt16 = s[0]
-  guard b0 is ('\n' | 'h' | 'b' | 'a'..='z') && s is [.. "hello", .. rest] else {
-    fail("unexpected string content")
-  }
-  guard rest is " world"                   // crashes on mismatch (no `else`)
-
-  let b1 : Char? = s.get_char(0)
-  assert_true(b1 is Some('a'..='z'))
-
-  // ⚠️ variables don't work with direct indexing
-  let eq_char : Char = '='
-  // s[0] == eq_char // ❌ eq_char not a literal; s[0] is UInt16
-  // Use: s[0] == '=' or s.get_char(0) == Some(eq_char)
-
-  let bytes = @utf8.encode("中文")
-  assert_true(bytes is [0xe4, 0xb8, 0xad, 0xe6, 0x96, 0x87])
-  let s2 : String = @utf8.decode(bytes)
-  assert_true(s2 is "中文")
-  for c in "中文" {
-    let _ : Char = c                        // unicode-safe iteration
-    println("char: \{c}")
-  }
-}
-```
-
-### String interpolation && StringBuilder
-
-`\{expr}` for interpolation; custom types must implement `Show`:
-
-```mbt check
-///|
-test "string interpolation" {
-  let name : String = "Moon"
-  let config = { "cache": 123 }
-  let version = 1.0
-  println("Hello \{name} v\{version}")
-
-  // Quoted map keys are allowed inside interpolation expressions.
-  println("'cache' section: \{config["cache"]}")
-
-  let sb = StringBuilder()
-  sb <+ "[\{[ for x in [1, 2, 3] => "\{x}" ].join(",")}]"
-  inspect(sb, content="[1,2,3]")
-
-  let x = 42
-  let streamed = StringBuilder()
-  streamed <+ "hello \{x}"
-  inspect(streamed, content="hello 42")
-}
-```
-
-Expressions inside `\{}` must be single-line expressions. Nested
-interpolations and string literals are supported, but line breaks inside `\{}`
-are not.
-
-String interpolation can also be streamed directly into a
-`Logger`/`StringBuilder`-style writer with `<+`:
-
-```mbt nocheck
-writer <+ "hello \{x}"
-```
-
-This expands to calls on the writer:
-
-```mbt nocheck
-writer.write_string("hello ")
-writer.write(x)
-```
-
-Literal string segments use `write_string`; interpolated expressions use
-`write`. The expansion is macro-style: it depends on how the writer type
-implements `write_string` and `write`. Types such as HTMLBuilder or JSONBuilder
-can support interpolation and streaming with the same syntax but different
-semantics.
-
-### Multi-line strings
-
-```mbt check
-///|
-test "multi-line string literals" {
-  let a : String =
-    #|Hello "world"
-    #|World
-    #|
-  let b : String =
-    $|Line 1 ""
-    $|Line 2 \{1+2}
-    $|
-  // `#|` — no escape. `$|` — only escape `\{..}`.
-  assert_eq(a, "Hello \"world\"\nWorld\n")
-  assert_eq(b, "Line 1 \"\"\nLine 2 3\n")
-}
-```
-
-## Map (mutable, insertion-order preserving)
-
-```mbt check
-///|
-test "map literals and common operations" {
-  let map : Map[String, Int] = { "a": 1, "b": 2, "c": 3 }
-  let empty : Map[String, Int] = {}                     // preferred over Map::new()
-  let also_empty : Map[String, Int] = Map::new()
-  let from_pairs : Map[String, Int] = Map::from_array([("x", 1), ("y", 2)])
-
-  map["new-key"] = 3
-  map["a"] = 10
-
-  guard map is { "new-key": 3, "missing"? : None, .. } else {
-    fail("unexpected map")
-  }
-  let value : Int = map["a"]                 // panics if missing
-
-  for k, v in map {
-    println("\{k}: \{v}")                    // insertion order preserved
-  }
-
-  map.remove("b")
-  guard map is { "a": 10, "c": 3, "new-key": 3, .. } && map.length() == 3 else {
-    fail("unexpected map after removal")
-  }
-}
-```
-
-## View types
-
-Zero-copy, non-owning read-only slices created with `[:]` syntax. No allocation. Functions taking `String`/`Bytes`/`Array` also accept `*View` (implicit conversion).
-
-- `String` → `StringView` via `s[:]`, `s[start:end]`, `s[start:]`, `s[:end]`
-- `Bytes` → `BytesView` via `b[:]`, `b[start:end]`, etc.
-- `Array[T]` / `FixedArray[T]` / `ReadOnlyArray[T]` → `ArrayView[T]` via `a[:]`, etc.
-
-**StringView caveat**: `s[a:b]` may raise at surrogate boundaries (UTF-16 edge case). Use `try! s[a:b]` if certain, or propagate the error.
-
-Use views for:
-- Rest patterns (`[first, .. rest]`)
-- Passing slices without allocation
-- Avoiding copies of large sequences
-
-Convert back with `.to_string()`, `.to_bytes()`, `.to_array()` when you need ownership.
-
----
-
 ## User-defined types
 
 ### struct
@@ -509,7 +314,7 @@ Convert back with `.to_string()`, `.to_bytes()`, `.to_array()` when you need own
 struct Point {
   x : Int
   mut y : Int                                // `mut` allows field mutation
-} derive(Show, ToJson, Eq)
+} derive(Debug, ToJson, Eq)
 
 ///|
 /// `Type::` can be omitted when the type is already known in context
@@ -520,7 +325,7 @@ let p : Point = Point::{ x: 10, y: 20 }
 pub(all) struct Config {
   host : String
   port : Int
-} derive(Show, Eq, ToJson, FromJson)
+} derive(Debug, Eq, ToJson, FromJson)
 ```
 
 ### enum
@@ -530,13 +335,13 @@ pub(all) struct Config {
 enum Tree[T] {
   Leaf(T)                                           // no trailing comma
   Node(left~ : Tree[T], T, right~ : Tree[T])        // variants can use labels
-} derive(Show, ToJson)
+} derive(Debug, ToJson)
 
 ///|
 pub enum MyResult[T, E] {
   MyOk(T)                                           // semicolon optional when newline follows
   MyErr(E)                                          // variants must start Uppercase
-} derive(Show, Eq, ToJson)
+} derive(Debug, Eq, ToJson)
 
 ///|
 pub fn Tree::sum(tree : Tree[Int]) -> Int {
@@ -580,10 +385,11 @@ Most types can auto-derive standard traits with `derive(...)`:
 
 | Trait | Enables |
 |---|---|
-| `Show` | `to_string()`, string interpolation `\{value}` |
+| `Debug` | `debug_inspect()` for structural test/diagnostic output — the derivable default for your own data types. For interpolation of composed values use `\{to_repr(value)}` |
+| `Show` | Specialized display strings (JSON, XML, user-facing text). Deriving it for debugging is deprecated in favor of `Debug`; write a manual `impl Show for T with output(self, logger) { ... }` only for genuine display formats |
 | `Eq` | `==`, `!=` |
 | `Compare` | `<`, `>`, `<=`, `>=` |
-| `ToJson` | `@json.inspect()` for readable test output |
+| `ToJson` | `json_inspect()` for readable test output |
 | `FromJson` | JSON deserialization |
 | `Hash` | Map keys |
 
@@ -592,16 +398,16 @@ Most types can auto-derive standard traits with `derive(...)`:
 struct Coordinate {
   x : Int
   y : Int
-} derive(Show, Eq, ToJson)
+} derive(Debug, Eq, ToJson)
 
 ///|
 enum Status {
   Active
   Inactive
-} derive(Show, Eq, Compare)
+} derive(Debug, Eq, Compare)
 ```
 
-**Best practice**: always derive `Show` and `Eq` for data types; add `ToJson` if you test them with `@json.inspect()`.
+**Best practice**: always derive `Debug` and `Eq` for data types; add `ToJson` if you test them with `json_inspect()`. Reserve `Show` for genuine display formats via a manual `impl`.
 
 ---
 
@@ -640,505 +446,6 @@ test "pattern matching on Array, struct, StringView" {
     }
   }
 }
-```
-
----
-
-## Error handling (checked errors)
-
-MoonBit uses checked error-throwing, not unchecked exceptions. All errors are subtypes of `Error`; declare custom types with `suberror`. Checked errors are tracked in function signatures, not marked at every call site — a function that may raise declares `raise` or `raise SomeError`. Errors propagate by default — **do NOT add `try`** for functions that raise (unlike Swift). Use:
-- Plain call inside a `raise` function — propagates automatically.
-- `expr catch { ... }` or `try { } catch { } [noraise { }]` — handle explicitly.
-- `try! expr` — abort if it raises.
-
-Do not use the legacy `function_name!(...)` / `function_name(...)?` syntax for new code. (`try?`, which converts to `Result[_, _]`, is being deprecated — prefer `try ... catch ... noraise` instead.)
-
-```mbt check
-///|
-suberror ValueError {
-  ValueError(String)
-}
-
-///|
-struct Position(Int, Int) derive(ToJson, Show, Eq)
-
-///|
-pub(all) suberror ParseError {
-  InvalidChar(pos~ : Position, Char)
-  InvalidEof(pos~ : Position)
-  InvalidNumber(pos~ : Position, String)
-  InvalidIdentEscape(pos~ : Position)
-} derive(Eq, ToJson, Show)
-
-///|
-fn parse_int(s : String, position~ : Position) -> Int raise ParseError {
-  if s is "" {
-    raise ParseError::InvalidEof(pos=position)
-  }
-  ...
-}
-
-///|
-/// Just `raise` (no type) — don't track specific error type
-fn div(x : Int, y : Int) -> Int raise {
-  if y is 0 { fail("Division by zero") }
-  x / y
-}
-
-///|
-test "inspect raise function" {
-  // Expected-failure shape: handle in `catch`, fail explicitly in `noraise`.
-  try div(1, 0) catch {
-    Failure(msg) => assert_true(msg.contains("Division by zero"))
-    _ => fail("unexpected error")           // catch must be exhaustive over Error
-  } noraise {
-    _ => fail("expected to fail")
-  }
-}
-
-///|
-/// Errors propagate automatically — no `try` needed
-fn use_parse(position~ : Position) -> Int raise ParseError {
-  let x = parse_int("123", position~)
-  x * 2
-}
-
-///|
-/// Convert to a Result by catching explicitly (replaces the deprecated `try?`)
-fn safe_parse(s : String, position~ : Position) -> Result[Int, ParseError] {
-  try parse_int(s, position~) catch {
-    err => Err(err)
-  } noraise {                                        // noraise block runs on success
-    v => Ok(v)
-  }
-}
-
-///|
-/// try-catch with specific patterns
-fn handle_parse(s : String, position~ : Position) -> Int {
-  try parse_int(s, position~) catch {
-    ParseError::InvalidEof(pos=_) => {
-      println("Parse failed: InvalidEof")
-      -1
-    }
-    _ => 2
-  }
-}
-```
-
-All `async` functions can raise errors without explicitly stating `raise`.
-
-### Error polymorphism: `raise?` and `noraise`
-
-A higher-order function whose own raising depends on its callback's raising must use `raise?`. The compiler resolves `raise?` to `raise` or `noraise` at each call site based on the callback type:
-
-```mbt nocheck
-fn[T] map(arr : Array[T], f : (T) -> T raise?) -> Array[T] raise? {
-  let res = []
-  for x in arr { res.push(f(x)) }
-  res
-}
-
-fn pure(arr : Array[Int]) -> Array[Int] noraise {
-  map(arr, x => x + 1)              // f is noraise → map call site is noraise
-}
-
-fn fallible(arr : Array[Int]) -> Array[Int] raise {
-  map(arr, x => if x < 0 { fail("neg") } else { x })   // f raises → map call site raises
-}
-```
-
-Without `raise?`, `map` would unconditionally appear to raise, polluting all callers. Use `raise?` whenever a function's raising is purely "as-raising-as my callback".
-
-`noraise` makes the no-raise contract explicit on a signature. You'll see it most often on `async` functions (which otherwise raise implicitly):
-
-```mbt nocheck
-async fn pure_async() -> Int noraise { 42 }
-```
-
-### `Error` bound on generics
-
-To write a function generic in the *concrete* error type (not just `Error`), bind a type parameter with `: Error`:
-
-```mbt nocheck
-fn[T, E : Error] unwrap_or_error(r : Result[T, E]) -> T raise E {
-  match r {
-    Ok(x)  => x
-    Err(e) => raise e
-  }
-}
-```
-
-This preserves the specific error type at call sites — better than the catch-all `raise` (which is `raise Error`) when callers want to handle one variant.
-
-### `try` block error inference
-
-Inside a `try` block, multiple raise types collapse to `Error`. The handler must use `_` to catch all variants and re-raise unhandled ones:
-
-```mbt nocheck
-try {
-  f1()                                // raise E1
-  f2()                                // raise E2
-} catch {
-  E1(_) => ...
-  E2    => ...
-  e     => raise e                    // re-raise anything else
-}
-```
-
----
-
-## Control flow
-
-### Expressions are values
-
-`if`, `match`, loops all return values; the last expression is the return:
-
-```mbt check
-///|
-test "expressions return values" {
-  let (n, opt) = (1, Some(2))
-  let msg : String = if n > 0 { "pos" } else { "non-pos" }
-  let res = match opt {
-    Some(x) => x + 10
-    None => 0
-  }
-  inspect(res, content="12")
-  inspect(msg, content="pos")
-}
-```
-
-### Functional `for` loop
-
-```mbt check
-///|
-pub fn binary_search(arr : ArrayView[Int], value : Int) -> Result[Int, Int] {
-  let len = arr.length()
-  // for: initial state; [predicate]; [post-update] {
-  //   body — `continue` updates state
-  // } else { exit block }
-  for i = 0, j = len; i < j; {
-    let h = i + (j - i) / 2
-    if arr[h] < value {
-      continue h + 1, j
-    } else {
-      continue i, h
-    }
-  } else {
-    if i < len && arr[i] == value { Ok(i) } else { Err(i) }
-  } where {
-    invariant: 0 <= i && i <= j && j <= len,
-    invariant: i == 0 || arr[i - 1] < value,
-    invariant: j == len || arr[j] >= value,
-    reasoning: (
-      #|For a sorted array, boundary invariants are witnesses:
-      #|  arr[i-1] < value implies all arr[0..i) < value (by sortedness)
-      #|  arr[j] >= value implies all arr[j..len) >= value
-      #|Termination: j - i decreases each iteration.
-      #|Correctness at exit: arr[0..i) < value and arr[i..len) >= value.
-    ),
-  }
-}
-
-///|
-test "iteration" {
-  let arr : Array[Int] = [1, 3, 5, 7, 9]
-  inspect(binary_search(arr, 5), content="Ok(2)")
-  for i, v in arr {
-    println("\{i}: \{v}")                    // i = index, v = value
-  }
-}
-```
-
-**Prefer functional `for`** over imperative. For trivial loops, use `for x in collection` — no reasoning needed.
-
-#### Loop invariants (`where` clause)
-
-Attaches machine-checkable invariants and human-readable reasoning:
-
-```mbt nocheck
-for ... {
-  ...
-} where {
-  invariant : <boolean_expr>,
-  invariant : <boolean_expr>,
-  reasoning : <string>
-}
-```
-
-Writing good invariants:
-1. **Checkable** — use valid boolean expressions over loop variables.
-2. **Boundary witnesses** — for "all elements in arr[0..i)" properties, check only boundary elements.
-3. **Edge cases with `||`** — e.g. `i == 0 || arr[i-1] < value`.
-4. **Reasoning covers three aspects** — Preservation (each `continue` maintains invariants), Termination (decreasing measure), Correctness (invariants at exit imply postcondition).
-
-### Functional `loop` (MoonBit-specific)
-
-Unlike `for`, `loop` pattern-matches on loop variables and uses `continue` with updated values. Great for tail-recursive-style algorithms:
-
-```mbt check
-///|
-/// Pattern-match on a @list.List
-fn sum_list(list : @list.List[Int]) -> Int {
-  loop (list, 0) {
-    (Empty, acc) => acc
-    (More(x, tail=rest), acc) => continue (rest, x + acc)
-  }
-}
-
-///|
-/// Two-pointer search with loop
-fn find_pair(arr : Array[Int], target : Int) -> (Int, Int)? {
-  loop (0, arr.length() - 1) {
-    (i, j) if i >= j => None
-    (i, j) => {
-      let sum = arr[i] + arr[j]
-      if sum == target {
-        Some((i, j))
-      } else if sum < target {
-        continue (i + 1, j)
-      } else {
-        continue (i, j - 1)
-      }
-    }
-  }
-}
-```
-
-**`loop` requires a payload.** For an infinite loop, use `while true { ... }` instead — `loop { ... }` without arguments is invalid.
-
-### `while` returns a value
-
-```mbt check
-///|
-test "while with break value" {
-  let array = [1, 2, 3, 4, 5]
-  let mut i = 0
-  let target = 3
-  let found : Int? = while i < array.length() {
-    if array[i] == target {
-      break Some(i)                          // exit with a value
-    }
-    i = i + 1
-  } else {
-    None                                     // value when loop completes normally
-  }
-  assert_eq(found, Some(2))
-}
-```
-
-### Labelled loops
-
-Use `label~:` before a loop and `break label~` / `continue label~` to target
-that loop from a nested loop. Keep the trailing `~` on both the label
-declaration and the labelled control-flow statement; `break label` is parsed as
-breaking with the value `label`, not as a labelled break.
-
-```mbt check
-///|
-test "labelled break" {
-  let mut seen = 0
-  outer~: while true {
-    for x in [1, 2, 3] {
-      seen = x
-      if x == 2 {
-        break outer~
-      }
-    }
-  }
-  assert_eq(seen, 2)
-}
-```
-
----
-
-## Methods and traits
-
-Methods use `Type::method_name` syntax. Traits are defined with a trait body and implemented with `impl Trait for Type`.
-
-```mbt check
-///|
-struct Rectangle {
-  width : Double
-  height : Double
-}
-
-///|
-/// Methods prefixed with Type::
-fn Rectangle::area(self : Rectangle) -> Double {
-  self.width * self.height
-}
-
-///|
-/// Static methods don't take self
-fn Rectangle::new(w : Double, h : Double) -> Rectangle {
-  { width: w, height: h }
-}
-
-///|
-/// Show uses `output(self, logger)` for custom formatting — to_string() is derived from this
-pub impl Show for Rectangle with output(self, logger) {
-  logger.write_string("Rectangle(\{self.width}x\{self.height})")
-}
-
-///|
-trait Named {
-  name() -> String                            // no `self` parameter — not object-safe
-}
-
-///|
-/// Trait bounds in generics
-fn[T : Show + Named] describe(value : T) -> String {
-  "\{T::name()}: \{value.to_string()}"
-}
-
-///|
-impl Hash for Rectangle with hash_combine(self, hasher) {
-  hasher..combine(self.width)..combine(self.height)
-}
-```
-
-### `Self` in trait bodies
-
-Inside a trait declaration, `Self` refers to the implementing type:
-
-```mbt nocheck
-pub(open) trait Container {
-  empty() -> Self                              // constructor returning Self
-  push(Self, Int) -> Self
-  pop(Self) -> (Self, Int)?
-}
-```
-
-### Default trait methods (`= _`)
-
-Traits can supply default method bodies. The declaration uses the `= _` marker so readers see at-a-glance which methods have defaults; the body is provided in a separate `impl T with method(...) { ... }` block:
-
-```mbt nocheck
-pub(open) trait J {
-  f(Self) -> Unit
-  f_twice(Self) -> Unit = _                    // default body provided below
-}
-
-impl J with f_twice(self) {
-  self.f()
-  self.f()
-}
-```
-
-Implementers only need to provide `f` — `f_twice` is inherited. They may still override with `impl J for MyType with f_twice(...)` when the default isn't right.
-
-For traits where every method has a default, write `impl Trait for Type` (no method clause) to register the implementation and let the compiler verify all defaults apply. This also serves as a TODO marker.
-
-### Trait inheritance
-
-```mbt nocheck
-pub(open) trait Position { pos(Self) -> (Int, Int) }
-pub(open) trait Draw     { draw(Self, Int, Int) -> Unit }
-pub(open) trait Object: Position + Draw {}      // Object requires both
-
-pub fn[O : Object] render(obj : O) -> Unit {
-  let (x, y) = obj.pos()
-  obj.draw(x, y)
-}
-```
-
-Implementing the sub-trait requires implementing every super-trait too.
-
-### Local methods on foreign types
-
-You **cannot** add a `pub` method to a type from another package. But you **can** add a *private* method on a foreign type, scoped to your current package:
-
-```mbt nocheck
-fn Int::squared_plus(self : Int) -> Int { self * self + self }    // private, current package only
-
-test {
-  assert_eq((6).squared_plus(), 42)
-}
-```
-
-If your method name shadows one from the type's home package, the compiler emits a warning. Use this for local extensions / convenience methods. For genuine cross-package extension, use a free function or define a trait and `impl Trait for @otherpkg.Type` instead (covered in "Must-know gotchas").
-
-### Operator overloading
-
-```mbt check
-///|
-struct Vector(Int, Int)
-
-///|
-pub impl Add for Vector with add(self, other) {
-  Vector(self.0 + other.0, self.1 + other.1)
-}
-
-///|
-struct Person {
-  age : Int
-} derive(Eq)
-
-///|
-pub impl Compare for Person with compare(self, other) {
-  self.age.compare(other.age)
-}
-
-///|
-test "operator overloading" {
-  let v1 : Vector = Vector(1, 2)
-  let v2 : Vector = Vector(3, 4)
-  let _v3 : Vector = v1 + v2                 // uses impl Add
-}
-```
-
-| Operator | Mechanism |
-|---|---|
-| `+`, `-`, `*`, `/`, `%` | trait `Add` / `Sub` / `Mul` / `Div` / `Mod` |
-| `==` | trait `Eq` |
-| `<<`, `>>` | trait `Shl` / `Shr` |
-| `&`, <code>&#124;</code>, `^` | trait `BitAnd` / `BitOr` / `BitXOr` |
-| unary `-` | trait `Neg` |
-| `_[_]`, `_[_] = _`, `_[_:_]` | method + `#alias("...")` (see below) |
-
-### Indexing operators via `#alias`
-
-Index-shaped operators (`x[k]`, `x[k] = v`, `x[a:b]`) are overloaded by methods with an `#alias("op")` annotation, not by traits. Each has a required signature:
-
-| Alias | Signature | Usage |
-|---|---|---|
-| `#alias("_[_]")` | `(Self, Index) -> Result` | `let r = self[index]` |
-| `#alias("_[_]=_")` | `(Self, Index, Value) -> Unit` | `self[index] = value` |
-| `#alias("_[_:_]")` | `(Self, start? : Index, end? : Index) -> Result` | `self[start:end]` |
-
-```mbt nocheck
-struct Coord {
-  mut x : Int
-  mut y : Int
-} derive(Show)
-
-#alias("_[_]")
-fn Coord::get(self : Self, key : String) -> Int {
-  match key { "x" => self.x; "y" => self.y }
-}
-
-#alias("_[_]=_")
-fn Coord::set(self : Self, key : String, val : Int) -> Unit {
-  match key { "x" => self.x = val; "y" => self.y = val }
-}
-
-// let c = Coord::{ x: 1, y: 2 }
-// c["x"]      // 1
-// c["y"] = 7  // ok
-```
-
-Implementing `_[_:_]` lets your type act as a slice source:
-
-```mbt nocheck
-struct DataView(String)
-struct Data {}
-
-#alias("_[_:_]")
-fn Data::as_view(_self : Self, start? : Int = 0, end? : Int) -> DataView {
-  DataView("[\{start}, \{end.unwrap_or(100)})")
-}
-// data[2:5]  // DataView("[2, 5)")
 ```
 
 ---

@@ -13,7 +13,11 @@ Load the reference matching your current work BEFORE writing code:
 
 | Task | Read |
 |---|---|
-| Writing MoonBit syntax (types, traits, errors, strings, loops, newtypes, constants, options) | `references/language.md` |
+| Writing MoonBit syntax — core (structs/enums/newtypes, pattern matching, visibility, constants, options, label/optional params) | `references/language.md` |
+| Strings, `StringView`, UTF-16 safety, interpolation (`<+`/`<?`), `Bytes`, Arrays, `Map`, views | `references/strings-data.md` |
+| Error handling (`suberror`, `raise`/`catch`/`noraise`, `raise?`, `try`) | `references/errors.md` |
+| Loops and control flow (`for`, functional `loop`, `while`, labelled loops, loop invariants) | `references/control-flow.md` |
+| Methods, traits, operator overloading, indexing operators (`#alias`) | `references/traits-methods.md` |
 | Configuring `derive(...)` — JSON enum styles, rename rules, container/case/field args | `references/derive.md` |
 | Running `moon` commands (check / build / test / fmt / info / run) | `references/toolchain.md` |
 | Project/package layout, imports, `moon.mod`, `moon.pkg` config, dependencies, `using` re-exports | `references/toolchain.md` |
@@ -21,6 +25,8 @@ Load the reference matching your current work BEFORE writing code:
 | Designing visibility and public API shape (`pub`, opaque types, `.mbti` review) | `references/language.md` + `references/toolchain.md` |
 | Refactoring (API shrinkage, package splits, fn↔method, coverage gap filling) | `references/refactoring.md` |
 | Optimizing data layout with `#valtype` (unboxing, flat arrays, value enums, the visibility interaction) | `references/valtype.md` |
+| Optimizing hot-path code on the native backend (refcount traffic, polymorphic `Eq` on enums, cross-package inlining, reading generated C/asm, profiling method) | `references/optimization.md` |
+| SIMD with the experimental `V128` type (`@v128` lane ops, wasm SIMD128 mirror) | `references/optimization.md` |
 | Benchmarks (`@bench.T`) and full-output snapshots (`@test.T::snapshot`) | `references/testing.md` |
 | Code navigation with `moon ide` (outline/peek-def/find-references/rename/hover/doc) | `references/moon-ide.md` |
 | Binding a C library (`extern "c"`, stubs, ownership, callbacks, ASan) | `references/c-ffi.md` (+ topic-specific c-ffi-*.md) |
@@ -66,14 +72,13 @@ Treat `.mbti` files as the public contract. Quote or summarize signatures only
 after reading the current local files. Do not claim an API is unavailable unless
 the current pinned package interface and package search support that conclusion.
 
-If you are about to write MoonBit syntax you have not verified (`newtype`, `trait`, `const`, error handling, string ops, label/optional params), read `references/language.md` first. The language has evolved — training-era syntax may be wrong.
+If you are about to write MoonBit syntax you have not verified, read the matching reference first (`references/language.md` for core syntax; `strings-data.md`, `errors.md`, `control-flow.md`, `traits-methods.md` for those topics). The language has evolved — training-era syntax may be wrong.
 
-Pay special attention there for:
-- newtype conventions (`struct NewType(OldType)` with `.0` access)
-- string safety rules (`String[i]` returns `UInt16`, may abort, and slicing can also abort)
-- ASCII-vs-Unicode text handling patterns
-- `Char::to_ascii_lowercase` / `Char::to_ascii_uppercase`
-- visibility defaults and opaque/public type choices
+Pay special attention to:
+- newtype conventions (`struct NewType(OldType)` with `.0` access) — `language.md`
+- visibility defaults and opaque/public type choices — `language.md`
+- string safety rules (`String[i]` returns `UInt16`, may abort, and slicing can also abort) — `strings-data.md`
+- ASCII-vs-Unicode text handling patterns, `Char::to_ascii_lowercase` / `to_ascii_uppercase` — `strings-data.md`
 
 ## Agent Workflow
 
@@ -95,6 +100,7 @@ Pay special attention there for:
    - use `pub(all)` rarely, only when outside construction is part of the contract
    - internal state machines, parse tables, accumulators, and helper parsers should stay internal
    - white-box tests are not justification for making internals public
+   - public concrete types belong in the package users name (or a public package it re-exports) — never defined in `internal/*` and recovered via `pub using`; see "Type ownership" in `references/toolchain.md`
 7. **Validate in a tight loop.** `moon check` after edits; add `--warn-list +unnecessary_annotation` (equivalent to `--warn-list +73`) when cleaning redundant annotations and over-qualified constructors. `moon test [dirname|filename] --filter 'glob'` for targeted tests. `moon test --update` for snapshot changes.
 
 8. **Finalize before handoff.** Always run `moon fmt` and `moon info` before committing — the user expects formatted code and up-to-date `.mbti` files in every commit. Review `pkg.generated.mbti` for necessity, not just change: remove unjustified public items and public mutable fields before considering the task done. Report changed files, validation commands, and any remaining risks.
@@ -111,38 +117,29 @@ readability checks across the touched file, not just the exact commented line:
   behavior.
 - Prefer optional argument forwarding when passing an optional parameter through
   unchanged. If a callee accepts `arg? : T` and the caller already has an
-  optional parameter `arg? : T`, forward it as `arg?`:
-  ```moonbit nocheck
-  fn inner(value? : Int) -> Unit { ... }
-
-  fn outer(value? : Int) -> Unit {
-    inner(value?)
-  }
-  ```
-  Do not unwrap and rewrap it by hand:
-  ```moonbit nocheck
-  fn outer(value? : Int) -> Unit {
-    // Anti-pattern: noisy, duplicates the call, and loses the point of
-    // optional arguments.
-    if value is Some(value) {
-      inner(value~)
-    } else {
-      inner()
-    }
-  }
-  ```
+  optional parameter `arg? : T`, forward it as `inner(value?)` — do not unwrap
+  and rewrap by hand with `if value is Some(value) { inner(value~) } else { inner() }`.
 - Do not keep helpers that only return a constant, wrap a single obvious
   expression, or rename a trivial mutation. Inline them unless the helper
   enforces an invariant or names a real domain action.
+- Do not introduce tuple destructuring merely to save a few lines. Prefer
+  named locals or direct branches when values have separate meanings, especially
+  in configuration and environment plumbing. Use tuples only when the grouped
+  values are a cohesive domain result or an established local pattern.
+- When application code needs to catch and render an expected domain or CLI
+  error, define and raise a specific `suberror` instead of using `fail` and
+  parsing its `Failure` text. Reserve `fail` for assertions, impossible states,
+  quick tests, or errors that are intentionally not part of a typed handling
+  path.
 - Treat `mut Array[_]` as suspicious. Use `mut` only when the array variable is
   reassigned; pushing or mutating array contents does not by itself need a
   mutable binding.
-- In state-machine, cursor, wrapping, or splice logic, add a short local comment
-  for non-obvious boundary handling. Use compact ASCII diagrams when textual
-  positions, display columns, or wrapped-row affinity are hard to see from code.
-- Centralize repeated text policies such as tab expansion, control-character
-  filtering, display-unit width, and line splitting in the narrowest appropriate
-  text package. Do not duplicate that logic in doc/render/composer packages.
+- In state-machine or index-arithmetic logic, add a short local comment for
+  non-obvious boundary handling. Use compact ASCII diagrams when positions or
+  offsets are hard to see from code.
+- Centralize a repeated policy (normalization, filtering, width/limit
+  computation, splitting rules) in the narrowest package that owns it; do not
+  duplicate that logic in downstream consumer packages.
 - Prefer black-box tests for behavior reachable through public package APIs.
   Keep white-box tests only for private state, cached layout metadata, or
   invariants that cannot be observed through the public API without widening it.
@@ -220,7 +217,7 @@ my_module
 
 5. **Tests**: Place in dedicated `*_test.mbt` files in the appropriate package. `*.mbt.md` files are also black-box test files — code blocks tagged ` ```mbt check ` are treated as test cases and serve both as docs and tests. `README.mbt.md` with `mbt check` examples is encouraged; symlink to `README.md` for GitHub compatibility.
 
-6. **Interface files (`pkg.generated.mbti`)**: compiler-generated summaries of a package's public API. Useful for code review. Check them into version control — commits that don't change public APIs leave these files unchanged. Generated by `moon info`.
+6. **Interface files (`pkg.generated.mbti`)**: compiler-generated summaries of a package's public API. Useful for code review. Check them into version control — commits that don't change public APIs leave these files unchanged. Generated by `moon info`; never edit them by hand (not even whitespace cleanup) — regenerate and review the diff as the public-API signal.
 
 7. **Public API minimization**: treat every `.mbti` entry as an API promise.
    - Public mutable fields are almost always wrong.
@@ -232,6 +229,7 @@ my_module
 - **Don't use uppercase for variables/functions** — compilation error
 - **Don't forget `mut` for mutable record fields** — immutable by default (Arrays typically do NOT need `mut` unless completely reassigning the variable; `push` etc. do not require it)
 - **Don't ignore error handling** — errors must be explicitly handled
+- **Do not introduce `abort` without explicit user approval** — before writing MoonBit code that calls `abort`, pause and ask the user to confirm that aborting is the intended behavior. Only use `abort` after that confirmation; otherwise model the failure with a typed error/`raise`, `Result`, or an approved adapter.
 - **Don't swallow all async errors** — in async code, never write a catch-all
   branch like `catch { _ => () }`. If a catch-all is genuinely needed for a
   user-visible best-effort operation, first preserve cancellation with
@@ -248,9 +246,13 @@ my_module
 - **Don't write record-style enum/error constructor fields** — labeled constructor fields use `label~ : Type`, e.g. `InvalidNumber(input~ : String)`, not `InvalidNumber(input : String)`
 - **Don't manually forward optional arguments by branching on `Some`/`None`** — if both caller and callee use `arg? : T`, pass it through as `arg?`; do not write two calls like `if arg is Some(arg) { f(arg~) } else { f() }`.
 - **Prefer range `for` loops** over C-style — `for i in 0..<(n-1) {...}` and `for j in 0..=6 {...}` are more idiomatic
+- **Don't use `for { ... }` for infinite loops** — write `for ;; { ... }` instead
+- **Don't `derive(Show)` for debugging** — derive `Debug` and use `debug_inspect()` for test/diagnostic output (`\{to_repr(value)}` for interpolation of composed values). Reserve a manual `impl Show` for specialized display formats (JSON, XML, domain text)
+- **Don't call `@json.inspect()`** — use the prelude `json_inspect(value, ...)` without a package prefix
 - **Async** — MoonBit has no `await` keyword; do not add it. Async functions/tests are marked with the `async` prefix (e.g. `[pub] async fn ...`, `async test ...`). Async functions default to raising, so do not add `raise`; add `noraise` only when the async body must not raise.
 - **No `finally`** in MoonBit — handle cleanup in both try success and catch paths
 - **No cross-package extension methods** — you cannot define `@otherpkg.Type::method` from outside that type's own package. Use free functions or define a trait and `impl Trait for @otherpkg.Type` instead.
 - **Do NOT use context7** for MoonBit library lookups — MoonBit packages aren't indexed there. Use `moon ide doc`, mooncakes.io, the moon registry cache (`~/.moon/registry/cache/`), `.mbti` files, or the library's source/GitHub instead.
+- **Don't use `moonbitlang/x` for IO** (e.g. `moonbitlang/x/fs` file read/write) — always prefer `moonbitlang/async` for filesystem, network, and other IO. Only reach for `moonbitlang/x` IO when the user explicitly asks for it. `moonbitlang/x` is a staging/experimental grab-bag; its IO surface is not the supported path.
 
-For complete syntax details, see `references/language.md`. For `moon` tooling, see `references/toolchain.md` and `references/moon-ide.md`.
+For complete syntax details, see `references/language.md` (and its topic files `strings-data.md`, `errors.md`, `control-flow.md`, `traits-methods.md`). For `moon` tooling, see `references/toolchain.md` and `references/moon-ide.md`.

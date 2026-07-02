@@ -26,7 +26,7 @@ is covered in the sections below.
 - `moon check` — type check without building. Use REGULARLY — it is fast. (`--target` supported)
 - `moon check --warn-list +unnecessary_annotation` — enable warning 73 for redundant annotations and over-qualified constructors
 - `moon check --target all` — type check for all backends
-- `moon info` — type check AND generate `.mbti` files. Run to see if public interfaces changed.
+- `moon info` — type check AND generate `.mbti` files. Run to see if public interfaces changed. Never edit `pkg.generated.mbti` by hand (not even whitespace cleanup) — regenerate with `moon info` and review its diff as the public-API signal.
 - `moon explain` — show built-in documentation for compiler diagnostics
   - `moon explain --diagnostics` lists warning mnemonics and IDs
   - `moon explain --diagnostics 31` explains warning 31 (`unused_optional_argument`)
@@ -98,11 +98,11 @@ Output `README.mbt.md` in the package directory.
 
 Snapshot tests are preferred — easy to update when behavior changes.
 
-- **Snapshot tests**: `inspect(value, content="...")`. If output unknown, write `inspect(value)` and run `moon test --update`.
-  - Regular `inspect()` for simple values (uses `Show` trait)
-  - `@json.inspect()` for complex nested structures (uses `ToJson`, more readable output)
-  - Encouraged to `inspect` / `@json.inspect` the **whole return value** when it's not huge — makes tests simple.
-  - Requires `impl (Show|ToJson) for YourType` or `derive (Show, ToJson)`.
+- **Snapshot tests**: write `inspect(value)` / `debug_inspect(value)` / `json_inspect(value)`, then run `moon test --update` (or `-u`) to fill in `content=`.
+  - `inspect()` for values that implement `Show` (primitives, or types with a manual `impl Show`)
+  - `debug_inspect()` for any type that derives `Debug` — the default for your own data types
+  - `json_inspect()` for complex nested structures (uses `ToJson`, more readable output; `@json.inspect` is its deprecated old name — call it without a package prefix)
+  - Encouraged to inspect the **whole return value** when it's not huge — makes tests simple. Derive `Debug` and/or `ToJson` (or `impl Show`) on `YourType` accordingly.
 - **Update workflow**: after changing code that affects output, run `moon test --update`, review diffs in test files.
 - **Black-box by default**: call only public APIs via `@package.fn`. Use white-box tests (`*_wbtest.mbt`) only when private members matter.
 - **Grouping**: Combine related checks in one `test "..." { ... }` block for speed and clarity.
@@ -316,13 +316,27 @@ pub using @pkg_a { incr, type Counter, trait Tickable }
 Now downstream callers can write `@pkg_b.incr(...)` and it resolves to `@pkg_a.incr(...)`. This is the cleanest way to:
 
 - **Split a package gradually** — re-export from the new package, migrate callers one at a time, then move the actual definitions later (see `refactoring.md`).
-- **Provide a curated facade** — collect symbols from several internal packages into one public-facing one.
+- **Provide a curated facade** — collect symbols from several public packages into one public-facing one.
 
 Without `pub`, the `using` form just brings names into local scope (no re-export). Don't conflate with the `import { ... }` block in `moon.pkg` — that adds a dependency edge, while `using` operates on already-imported packages.
 
 #### `internal/` packages
 
-A package at `<a>/<b>/<c>/internal/<x>` is only importable from `<a>/<b>/<c>` and its descendants. Use this for helpers that should not leak into your public API. Combined with `pub using`, the `internal/` pattern lets you reorganize implementations without touching downstream callers.
+A package at `<a>/<b>/<c>/internal/<x>` is only importable from `<a>/<b>/<c>` and its descendants. Use this for implementation support that should not leak into your public API: scanners, parsers for sub-syntax, escaping/encoding helpers, validation helpers, low-level algorithms, private helper result types.
+
+#### Type ownership: `pub using` is for facade ergonomics, not type ownership
+
+A package should own the public concrete types whose constructors, fields, pattern matching, and methods users are expected to use. If users think of a type as `@foo.X`, define `X` in package `foo` — or in a **non-internal public package** that `foo` re-exports. Public type ownership matters more than implementation locality.
+
+Re-exporting a type from a non-internal public package works: MoonBit implicitly loads the owning package for method lookup, so users can name a value `@foo.X` and still call methods owned by `@bar.X`.
+
+**Do not put public concrete types in `internal/*` and recover them via `pub using`.** External users do not get implicit method-owner loading for internal packages, so `x.method()` can fail even when `x` is typed as the facade's re-exported type. It also muddies constructors, generated interfaces, and privacy boundaries.
+
+- Good: `pub using @parser { parse }`, `pub using @dom { type Node, to_markdown }` where `@parser` / `@dom` are public packages that own those APIs.
+- Acceptable: `pub using @impl { decode_entities }` — a **value** from an internal package, if its signature exposes no internal types and it is intentionally public API.
+- Avoid: `pub using @internal_impl { type X }` for a public concrete type. If `X` is public, define it in the facade or a public package; if truly internal, don't expose it.
+
+When you need to translate internal helper results into public types, enforce public defaults, or hide internal helper types, write an explicit wrapper instead of `pub using`. Practical rule: if a public function returns `X` and users inspect, construct, match, or call methods on `X`, then `X` belongs in the facade package (or a public package it re-exports); helper packages under `internal/*` should keep their types internal or return simple helper result types.
 
 ### Standard library (moonbitlang/core)
 

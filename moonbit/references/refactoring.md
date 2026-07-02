@@ -74,6 +74,8 @@ Lower-level packages must not import higher-level ones. If the split would creat
 
 Code under `<pkg>/internal/...` is only importable from `<pkg>` and its descendants. Use this for helpers that should not leak into your public API.
 
+Do not move a **public concrete type** into `internal/*` and recover it with `pub using` from a facade — external users don't get implicit method-owner loading for internal packages, so `x.method()` can fail on the re-exported type. Public types belong in the package users name or a non-internal public package it re-exports; see "Type ownership" in `toolchain.md`.
+
 ## Coverage-driven gap filling
 
 `moon coverage analyze` is what you reach for **after** `moon test` is green and you want to know which branches are still untested.
@@ -167,7 +169,7 @@ for _ in 0..<n; a = 1, b = 2 {
 }
 ```
 
-Once the state lives in the loop header, you can attach a `where { invariant: ..., reasoning: ... }` block when the algorithm warrants it (see `language.md` "Loop invariants").
+Once the state lives in the loop header, you can attach a `where { invariant: ..., reasoning: ... }` block when the algorithm warrants it (see `control-flow.md` "Loop invariants").
 
 ## When to stop
 

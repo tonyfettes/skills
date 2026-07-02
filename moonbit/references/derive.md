@@ -5,20 +5,21 @@ Configuring auto-derived traits. For the bare list of derivable traits, see `lan
 ## Quick rules
 
 - A trait `T` can be derived only if every field used in the type already implements `T`.
-- Always derive `Show` and `Eq` on data types; add `ToJson` if you `@json.inspect` them in tests.
+- Always derive `Debug` and `Eq` on data types; add `ToJson` if you `json_inspect` them in tests. Deriving `Show` for debugging is deprecated — reserve `Show` for genuine display formats via a manual `impl Show for T with output(...)`.
 - For `FromJson` / `ToJson` arguments more advanced than `style`, `rename_fields`, and per-field `rename`, **manually implement the trait** — many older args (`repr`, `case_repr`, `default`, `rename_all`) have been deprecated.
 
 ## Derivable traits
 
 | Trait | Enables |
 |---|---|
-| `Show` | `to_string()`, string interpolation `\{value}` |
+| `Debug` | `debug_inspect()`, `\{to_repr(value)}` interpolation — the derivable default for data types |
+| `Show` | `to_string()`, string interpolation `\{value}` — manual `impl` for display formats; deriving for debugging is deprecated |
 | `Eq` | `==`, `!=` |
 | `Compare` | `<`, `>`, `<=`, `>=` (orders enums by definition order) |
 | `Default` | `T::default()` |
 | `Hash` | `Map` / `HashSet` keys |
 | `Arbitrary` | property testing (`@quickcheck`) |
-| `ToJson` | `@json.inspect`, `to_json()` |
+| `ToJson` | `json_inspect`, `to_json()` |
 | `FromJson` | `@json.from_json` |
 
 ### `Default` requirements
@@ -31,7 +32,7 @@ enum DeriveDefaultEnum {
   Case1(Int)
   Case2(label~ : String)
   Case3                              // chosen as default
-} derive(Default, Eq, Show)
+} derive(Default, Eq, Debug)
 ```
 
 ## `FromJson` / `ToJson`

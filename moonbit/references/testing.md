@@ -1,6 +1,6 @@
 # Benchmarks and Output Snapshots
 
-For `inspect()` / `@json.inspect()` snapshot tests, see `toolchain.md`. This file covers two specialized testing tools that aren't `inspect`-based:
+For `inspect()` / `debug_inspect()` / `json_inspect()` snapshot tests, see `toolchain.md`. This file covers two specialized testing tools that aren't `inspect`-based:
 
 - **`@bench.T`** — performance measurement with statistical reporting
 - **`@test.T::snapshot`** — full-output snapshots for codegen, parsers, image renderers, etc.
@@ -91,8 +91,9 @@ test "record anything" (t : @test.T) {
 
 | Use | When |
 |---|---|
-| `inspect(value, content=...)` | The value fits on a few lines; `Show` output is readable |
-| `@json.inspect(value, content=...)` | Nested structures; `ToJson` produces clearer diff |
+| `inspect(value, content=...)` | The value implements `Show` (primitives or a manual `impl Show`) |
+| `debug_inspect(value, content=...)` | Your own data types — anything that derives `Debug` |
+| `json_inspect(value, content=...)` | Nested structures; `ToJson` produces clearer diff |
 | `@test.T::snapshot(filename=...)` | Output is multi-line/binary-ish; or you want to record a whole pipeline run, not a single value |
 
 ### Constraints
@@ -100,6 +101,42 @@ test "record anything" (t : @test.T) {
 - **`t.snapshot` raises** — put it at the **end** of the test block. Anything after it is unreachable.
 - One snapshot per filename per test block. Use distinct filenames if you want to record multiple artifacts in one test.
 - Snapshots are checked into version control alongside the test.
+
+## Error handling in tests
+
+**Never use `abort(...)` in a test** — not even for a "this can't happen" branch
+(e.g. an unreachable arm added only to make a `catch` exhaustive). `abort` panics
+the test runner instead of producing a test failure, and it usually signals a
+design smell in the code under test rather than a real test need.
+
+Prefer, in order:
+
+1. **Re-raise / let it propagate.** A `test` block can raise, so don't catch
+   what you don't assert on. If a `catch` was added only to satisfy
+   exhaustiveness over an error you don't expect, re-raise it (`e => raise e`) so
+   an unexpected error fails the test with its real value, or restructure so the
+   call propagates directly. An over-broad error type that forces spurious arms
+   is itself the thing to fix (often: the error variant belongs in a different
+   layer — keep each error set narrow to its domain).
+2. **`fail("...")`** when you genuinely need to stop a test with a message (e.g.
+   a value that should have matched a pattern didn't). `fail` produces a test
+   failure; `abort` produces a crash.
+
+```moonbit nocheck
+// Anti-pattern: panics the runner, and the WrongAtlas arm only exists because
+// the error type is too wide for this call site.
+let r = atlas.reserve(w, h) catch {
+  AtlasFull => { full = true; break }
+  WrongAtlas => abort("reserve never raises WrongAtlas")  // ✗
+}
+
+// Better: narrow the error so reserve only raises AtlasFull (fix the design), or
+// re-raise the unexpected case so it surfaces as a real failure.
+let r = atlas.reserve(w, h) catch {
+  AtlasFull => { full = true; break }
+  e => raise e                                            // ✓ propagate
+}
+```
 
 ## Update workflow
 
