@@ -43,7 +43,9 @@ Mined from real session history; these caused the most compiler pushback by far:
 4. **Non-`Unit` results cannot be silently discarded** — wrap intentional discards in `ignore(...)`; first ask why the result is unused.
 5. **Write `!expr`, not `not(expr)`** (deprecated).
 6. **Materialize a `StringView` with `.to_owned()`, never `.to_string()`** (that's the deprecated `Show` display path).
-7. **Constructors are type-named now**: `Ref(x)` not `@ref.new(x)`; `Map([], capacity=...)` not `Map::new(...)`; `Set([])` not `Set::new()`; `b"..."` for `Bytes` literals; `to_owned` not `to_array`; `trim()` not `trim_space`; `@string.parse_double` not `@strconv.parse_double`.
+7. **Treat every `X::new()` / `@pkg.new()` as suspect — constructors are type-named now**: `Ref(x)`, `Map([], capacity=...)`, `Set([])`, `Buffer()`, `Queue()`, `Deque([], capacity=...)`, `Server(...)`. Also: `b"..."` for `Bytes` literals; `to_owned` not `to_array`; `trim()` not `trim_space`; the whole `@string.parse_int` / `parse_uint` / `parse_int64` / `parse_double` family (not `@strconv.*`); `reinterpret_as_int` / `reinterpret_as_uint` for Byte/UInt conversions; `unwrap_or_else` not `or_else`; `has_prefix` / `has_suffix` not `starts_with` / `ends_with`; `length()` not `size()`.
+8. **"does not implement trait Show/Eq" means a missing derive** — `==` / `!=` needs `derive(Eq)`; interpolation `\{x}` needs `Show` (or use `\{to_repr(x)}` for debug-only display). Check derives before writing comparisons on new enums/structs; this is the single most common type error in real sessions.
+9. **In a workspace mixing js/native modules, bare `moon check/test/build/info` defaults to wasm-gc and fails** — always pass `--target js|native` (run both for shared packages). And never run `moon info --target X` to refresh `.mbti` in a multi-target package: it rewrites `pkg.generated.mbti` to that target's specialized surface — regenerate with default-target `moon info` and revert such diffs.
 
 ## API Lookup Rule
 
@@ -124,6 +126,10 @@ readability checks across the touched file, not just the exact commented line:
 
 - Prefer direct indexed iteration (`for index, item in array`) over
   `for index in 0..<array.length()` followed by `array[index]`.
+- When parsing byte/char sequences, prefer array/`BytesView` patterns with rest
+  segments — `[Esc, b'[', ..body, final]`, `[..b"\x1b]", ..rest]` — over
+  index-arithmetic `if`/`else` chains, `match len` ladders, or manual guard
+  sequences.
 - Prefer `if expr is Some(value) { ... } else { ... }`, and chain it with
   related boolean conditions when that removes a nested `match` without hiding
   behavior. For early-exit shapes, prefer `guard expr is Some(value) else { ... }`.
@@ -246,9 +252,13 @@ my_module
 
 ## Common Pitfalls
 
-- **Don't use uppercase for variables/functions** — compilation error
+- **Don't use uppercase for variables/functions** — compilation error. Top-level `let UPPER_CASE = ...` is a parse error: module-level constants are `const NAME = ...`; top-level `let` must be lower_snake_case
 - **Don't forget `mut` for mutable record fields** — immutable by default (Arrays typically do NOT need `mut` unless completely reassigning the variable; `push` etc. do not require it)
 - **Don't add `mut` speculatively either** — a field/binding gets `mut` only when a reassignment actually exists; `unused_mut` warnings must be cleaned up
+- **Never silence unused warnings** — no `_`-prefix renames or ad-hoc suppression to make `unused` warnings go away; delete or privatize the dead code instead. Persist agreed warn flags in `moon.pkg` config and run CI with `--deny-warn`.
+- **Comparing two computed values in a test is `@debug.assert_eq`** — `inspect(x, content=...)` / `debug_inspect` are for literal expected content; never interpolate the expected value into `content="\{y}"`.
+- **Static tables are literals or checked-in codegen** — write `let`/`const` array literals directly; for large derived tables, write a generator under `tools/` (its own MoonBit module) that emits a checked-in `.mbt` file. Never build tables dynamically in init functions.
+- **`#cfg` platform-gated code is NOT type-checked on other platforms** — `--target all` covers backends, not OSes. After editing OS-specific (`#cfg`-gated) code, say so explicitly and verify the foreign branch (CI matrix or a temporary cfg-stripped check).
 - **Don't ignore error handling** — errors must be explicitly handled
 - **Do not introduce `abort` without explicit user approval** — before writing MoonBit code that calls `abort`, pause and ask the user to confirm that aborting is the intended behavior. Only use `abort` after that confirmation; otherwise model the failure with a typed error/`raise`, `Result`, or an approved adapter.
 - **Do not write `guard` without `else` without explicit user approval** — `guard cond` / `guard x is Pattern` with no `else` panics at runtime when the condition fails; treat it with the same severity as `abort`. Default to `guard ... else { ... }` with an early return, typed error, or fallback. In tests too: prefer raising via `guard ... else { fail("...") }` over panicking.
@@ -275,7 +285,8 @@ my_module
 - **Don't call `@json.inspect()`** — use the prelude `json_inspect(value, ...)` without a package prefix
 - **Async** — MoonBit has no `await` keyword; do not add it. Async functions/tests are marked with the `async` prefix (e.g. `[pub] async fn ...`, `async test ...`). Async functions default to raising, so do not add `raise`; add `noraise` only when the async body must not raise.
 - **No `finally`** in MoonBit — use `defer expr` / `defer { ... }` for scope-exit cleanup (runs on normal exit and when an error propagates); see `references/control-flow.md`
-- **Cancellation-critical async cleanup** — in `moonbitlang/async`, cancellation arrives as a raised error at suspension points, so `catch`/`defer` blocks themselves DO run; but while a task is being cancelled, any **async operation inside the cleanup** is itself cancelled immediately. Must-complete async cleanup (terminal-state restore, external-resource release) needs `@async.protect_from_cancel` (use sparingly — it breaks `with_timeout`; pair with a hard timeout) or `TaskGroup::add_defer` with the same protection inside.
+- **Cancellation-critical async cleanup** — in `moonbitlang/async`, cancellation arrives as a raised error at suspension points, so `catch`/`defer` blocks themselves DO run; but while a task is being cancelled, any **async operation inside the cleanup** is itself cancelled immediately. Must-complete async cleanup (terminal-state restore, external-resource release) needs `@async.protect_from_cancel` or `TaskGroup::add_defer` with the same protection inside. Refinements from production review: protect only the cancelled path (the normal path should stay cancellable, or `with_timeout` can no longer abort it); bound the protected section with its own hard timeout; and if the cleanup's timeout fires during error propagation, catch **only** the cleanup timeout and re-raise the original body error — otherwise the cleanup `TimeoutError` masks the real failure.
+- **Async pipeline backpressure** — between reader/writer tasks use **bounded** queues; an `Unbounded` inbound queue silently removes socket backpressure and can OOM the process. Forced shutdown must clear both queues (stale frames leak across reconnects), and verify loop tasks actually park/exit after their channel closes — don't assume `exit` alone stops a busy loop.
 - **No cross-package extension methods** — you cannot define `@otherpkg.Type::method` from outside that type's own package. Use free functions or define a trait and `impl Trait for @otherpkg.Type` instead.
 - **Do NOT use context7** for MoonBit library lookups — MoonBit packages aren't indexed there. Use `moon ide doc`, mooncakes.io, the moon registry cache (`~/.moon/registry/cache/`), `.mbti` files, or the library's source/GitHub instead.
 - **Avoid `moonbitlang/x` when a `core`/`async` equivalent exists** — `moonbitlang/x` is a staging/experimental grab-bag. IO (fs, network) → `moonbitlang/async`; encoding → `moonbitlang/core/encoding`. Exception: `moonbitlang/x/path` for pure path manipulation is fine and preferred over hand-rolled string splitting. Only reach for other `x` packages when the user explicitly asks.

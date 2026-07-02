@@ -4,6 +4,13 @@ For data-layout work (`#valtype`, unboxing, flat arrays) read `valtype.md`
 first. This file is about the *code* side: refcount traffic, hidden
 polymorphic dispatch, and cross-package inlining on the native backend.
 
+One design rule that precedes any measurement: **a `mut` field forces heap
+allocation of an otherwise value-shaped struct**. For hot small-state types
+(decoders, cursors, counters), prefer an immutable value newtype with a
+functional-update shape — `struct Decoder(Int)` with
+`Decoder::push(self, byte : Byte) -> (Decoder, DecodeStep)` — over
+`struct Decoder { mut state : Int }`.
+
 ## Golden rule: read the generated C, then the assembly
 
 Do not guess what the compiler does. Source-level intuitions ("this is a

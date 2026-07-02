@@ -22,6 +22,7 @@ Escape hatches — `@cmd.custom_cmd`, `@sub.custom_sub`, `@cmd.effect`, `@cmd.at
 - **Storing a `Request` or `Cmd`** in a global, the Model, or any data structure. Construct commands fresh in update.
 - **Embedding logic in the emit callback**: `expect_empty(r => emit(Status(r.is_none())))` hides a decision in a closure. Carry the raw payload (`emit.map(r => Deleted(r))`) and decide in update.
 - **Wrapping a one-line request in a helper function** (`fn fetch_user(emit) -> Cmd { @http.get(...).expect_json(...) }`) — inline it at the use site. (Helpers that bundle several arguments from the model, as in multi-argument `@websocket.connect` calls, are fine.)
+- **Awaiting JS promises with `moonbitlang/async/js_async.Promise::wait` inside a Cmd** — Rabbita commands run on Rabbita's own JS async runtime; mixing runtimes can resume before the promise settles and panics. Always use the `Promise` type from `moonbit-community/rabbita/js` inside Rabbita FFI packages.
 
 # Hand-Written FFI Package Design
 
@@ -185,6 +186,8 @@ For every new FFI package:
 - [ ] All public operations return `Cmd`, never `Unit`
 - [ ] Method wrappers (`fn FooHandle::method`) are **not** `pub`
 - [ ] Public API takes `Emit[Msg]` for event wiring; callers adapt with `emit.map`
+- [ ] JS promises awaited via the `moonbit-community/rabbita/js` `Promise`, never `moonbitlang/async/js_async`
+- [ ] DOM-bound widget lifecycle owned by a subscription (unload = dispose) rather than a user-callable `close` Cmd; keyed string-id registries only for non-DOM resources (websocket-style)
 
 This makes it **impossible** for update to call side effects directly — the only public API returns `Cmd`.
 

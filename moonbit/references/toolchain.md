@@ -243,6 +243,16 @@ Once `moon.work` exists, run module-spanning commands at the workspace root —
 target a single module (e.g. `moon publish`) must run inside that member, e.g.
 `moon -C mod_a publish`.
 
+**Mixed-target workspaces** (e.g. a js client + native server): bare
+`moon check/test/build` falls back to wasm-gc and errors with "package(s) do
+not support target backend 'wasm-gc'" — always pass `--target js|native`
+explicitly, and run both targets for shared packages (protocol types etc.).
+Do NOT refresh interfaces with `moon info --target X` in a multi-target
+package: it rewrites `pkg.generated.mbti` to that target's specialized
+surface; use default-target `moon info` and revert any target-specialized
+`.mbti` diffs. Note also that `moon check` only checks the current platform's
+`#cfg` branch — `--target all` covers backends, not operating systems.
+
 ### `moon.pkg` (package configuration)
 
 Modern (preferred):
