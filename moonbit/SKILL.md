@@ -71,14 +71,18 @@ matter.
 
 For registry packages, including `moonbitlang/async`, first read the project
 `moon.mod` (or legacy `moon.mod.json`) to find the pinned dependency version.
-Then inspect:
+Then fetch that exact version's source as plain, greppable files:
 
-```text
-${MOON_HOME}/registry/cache/<owner>/<package>/<version>.zip
+```sh
+moon fetch <owner>/<package>@<version>   # → .repos/<owner>/<package>/<version>/
 ```
 
-Read the relevant `pkg.generated.mbti` inside the archive first, then README,
-source, tests, and examples when behavior matters. Use
+Read the relevant `pkg.generated.mbti` there first, then README, source,
+tests, and examples when behavior matters. Add `--no-update` to skip the
+registry-index refresh when offline; keep `.repos/` in `.gitignore`. If
+`moon fetch` is unavailable (older toolchain), fall back to inspecting the
+registry cache archive
+`${MOON_HOME}/registry/cache/<owner>/<package>/<version>.zip`. Use
 `${MOON_HOME}/registry/symbols/<owner>/<package>/<version>.symbols` if present,
 or `moon ide doc` / `moon ide peek-def` for semantic lookup.
 
