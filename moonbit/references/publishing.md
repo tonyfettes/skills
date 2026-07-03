@@ -2,7 +2,7 @@
 
 Publishing modules to mooncakes.io and the dependency tooling around it.
 Day-to-day `moon add/remove/update/fetch` and `moon.mod` basics are in
-`toolchain.md`.
+`project-config.md`.
 
 ## Account setup (one-time)
 

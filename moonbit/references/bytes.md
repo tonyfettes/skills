@@ -3,7 +3,7 @@
 `Bytes` (immutable), `b"..."` literals, choosing a byte container
 (`Buffer()`, `MutArrayView[Byte]`), `BytesView`, and bitstring patterns for
 binary parsing. `ArrayView`/view mechanics are in `collections.md`; wire-format
-FFI buffers are in `c-ffi.md` / `ffi-js-wasm.md`.
+FFI buffers are in `ffi/c.md` / `ffi/js-wasm.md`.
 
 ## Bytes (immutable)
 

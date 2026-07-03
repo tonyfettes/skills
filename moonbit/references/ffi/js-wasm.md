@@ -1,7 +1,7 @@
 # MoonBit JS / Wasm / Wasm-GC FFI Reference
 
 FFI for the non-C backends: `js`, `wasm` (linear memory), and `wasm-gc`. For the
-native C backend (`extern "c"`, C stubs, `moonbit.h`, ownership), see `c-ffi.md`.
+native C backend (`extern "c"`, C stubs, `moonbit.h`, ownership), see `c.md`.
 
 **Use this reference when**:
 - Binding JavaScript APIs with `extern "js"` or `#module`
@@ -228,7 +228,7 @@ standalone `.js` file (js) or `.wasm` module (wasm/wasm-gc).
 - **js / wasm-gc**: host GC is reused — no manual reference counting.
 - **wasm** (linear): reference counted like the C backend. The owned calling
   convention applies (`$moonbit.incref` / `$moonbit.decref`, plus `#borrow` /
-  `#owned` attributes); rules match `c-ffi-ownership.md`.
+  `#owned` attributes); rules match `c-ownership.md`.
 
 ## Pitfalls
 
@@ -246,5 +246,5 @@ standalone `.js` file (js) or `.wasm` module (wasm/wasm-gc).
 
 ## See also
 
-- `c-ffi.md` — native C backend FFI (stubs, ownership, finalizers, ASan)
+- `c.md` — native C backend FFI (stubs, ownership, finalizers, ASan)
 - MoonBit docs: `language/ffi.md`, `toolchain/moon/package.md` (link options)

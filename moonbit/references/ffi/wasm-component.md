@@ -3,7 +3,7 @@
 Building WebAssembly components from MoonBit: define interfaces in WIT,
 generate bindings with `wit-bindgen moonbit`, package with `wasm-tools`, test
 with `wasmtime`. Use this when a MoonBit module must interop with component
-hosts (wasmtime, jco, Spin, …) rather than plain wasm FFI (`ffi-js-wasm.md`
+hosts (wasmtime, jco, Spin, …) rather than plain wasm FFI (`js-wasm.md`
 covers custom import/export).
 
 Tool versions evolve; generated layout and flags below follow the official

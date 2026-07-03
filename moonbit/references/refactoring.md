@@ -1,8 +1,10 @@
-# Refactoring Reference
+# Refactoring & API Evolution
 
-Patterns for evolving MoonBit code without breaking callers. All assume you've already read the SKILL.md "Refactor (Behavior Preserving)" playbook and use `moon ide rename` / `find-references` / `outline` for navigation (see `moon-ide.md`).
-
-For migration shims when renaming/moving/deprecating public APIs (`#alias`, `#as_free_fn`, `#deprecated`, `#label_migration`, `#visibility`, `#alert`), see `api-evolution.md`.
+Patterns for evolving MoonBit code without breaking callers: package splits,
+migration shims for published APIs, coverage-driven gap filling, and
+readability refactors. All assume you've already read the SKILL.md "Refactor
+(Behavior Preserving)" playbook and use `moon ide rename` / `find-references` /
+`outline` for navigation (see `moon-ide.md`).
 
 ## Splitting a package
 
@@ -33,8 +35,119 @@ Lower-level packages must not import higher-level ones. If the split would creat
 
 Code under `<pkg>/internal/...` is only importable from `<pkg>` and its descendants. Use this for helpers that should not leak into your public API.
 
-Do not move a **public concrete type** into `internal/*` and recover it with `pub using` from a facade — external users don't get implicit method-owner loading for internal packages, so `x.method()` can fail on the re-exported type. Public types belong in the package users name or a non-internal public package it re-exports; see "Type ownership" in `toolchain.md`.
+Do not move a **public concrete type** into `internal/*` and recover it with `pub using` from a facade — external users don't get implicit method-owner loading for internal packages, so `x.method()` can fail on the re-exported type. Public types belong in the package users name or a non-internal public package it re-exports; see "Type ownership" in `project-config.md`.
 
+## Evolving public APIs (migration shims)
+
+Shims and attributes for changing a published API without breaking callers:
+renaming (`#alias`), fn↔method moves (`#as_free_fn`), deprecation
+(`#deprecated`), parameter changes (`#label_migration`), visibility tightening
+(`#visibility`), and usage warnings (`#alert`). Needed whenever a package has
+external consumers — during feature work and releases, not just refactors.
+
+### Free function ↔ method: `#as_free_fn`
+
+When you want to convert a free function `foo(x)` into a method `Bar::foo(self)`, place `#as_free_fn(foo, deprecated="Use Bar::foo")` on the new method. The compiler emits a deprecated free function `foo` that forwards to the method. Old callers keep working with a warning; you migrate them one at a time guided by the warnings.
+
+```mbt nocheck
+#as_free_fn(reader_next, deprecated="Use Reader::next instead")
+fn Reader::next(self : Reader) -> Char? { ... }
+// Old: reader_next(r)         — still compiles, emits deprecation warning
+// New: r.next()
+```
+
+The reverse direction — exposing a method as a free function intentionally — uses the same attribute without `deprecated`:
+
+```mbt nocheck
+#as_free_fn(m)                            // public method exposed as `m()`
+#as_free_fn(n, visibility="pub")          // also pick a visibility
+fn List::f() -> Bool { true }
+```
+
+### Renaming an existing API: `#alias`
+
+`#alias(old_name, deprecated)` adds an alternate (deprecated) name for an existing function. Use it when **renaming**, not when changing function-vs-method shape:
+
+```mbt nocheck
+#alias(compute_sum, deprecated="Use calculate_sum")
+pub fn calculate_sum(a : Int, b : Int) -> Int { a + b }
+```
+
+Strip the alias once `find-references compute_sum` returns nothing.
+
+### `#deprecated` for shape-preserving deprecation
+
+If you don't need a forwarding shim — just want to discourage callers — `#deprecated("message")` annotates an existing item:
+
+```mbt nocheck
+#deprecated("Will be removed in 0.5; use BarV2")
+pub fn old_api() -> Unit { ... }
+```
+
+Add `skip_current_package=true` when intra-package callers are intentional and don't need warnings.
+
+### Evolving parameters: `#label_migration`
+
+Changes a function's *parameter shape* without breaking callers — the shim
+lives on the parameter, not on a duplicate function. Three forms (one
+attribute per parameter; stack several on one function):
+
+```mbt nocheck
+#label_migration(x, fill=true, msg="x will become required")   // optional → required:
+#label_migration(y, fill=false, msg="y will be removed")       //   warns on call sites that OMIT x
+fn evolve(x? : Int = 0, y? : Int = 1) -> Int { ... }           // fill=false: warns on sites that PASS y
+
+#label_migration(count, allow_positional=true)   // positional → labelled:
+fn take(count~ : Int) -> Int { ... }             //   take(3) still compiles, warns to use count=3
+
+#label_migration(size, alias=len, msg="len is renamed to size") // rename a label:
+fn resize(size~ : Int) -> Int { ... }            //   resize(len=4) works; warns only if msg given
+```
+
+Verified: the warnings surface as `deprecated`-class warnings at exactly the
+call sites that will break, so `moon check` output is the migration worklist.
+Omitting `msg` on the `alias` form makes the old label a silent, permanent
+alias — include `msg` when you intend to remove it.
+
+### Announcing visibility tightening: `#visibility`
+
+When a `pub(all)` type is headed for `readonly` or `abstract`, warn users
+*before* the break. Usages that the future visibility would invalidate get an
+`alert_visibility` warning now:
+
+```mbt nocheck
+#visibility(change_to="readonly", "Point will be readonly in the future.")
+pub(all) struct Point {
+  x : Int
+  y : Int
+}
+// Downstream: Point::{ x: 1, y: 2 }  → warns (construction breaks under readonly)
+//             p.x                    → no warning (reads stay legal)
+```
+
+`change_to="readonly"` flags construction and field mutation;
+`change_to="abstract"` additionally flags pattern matching and field access.
+Pass the message positionally — the `message=` keyword form crashed the
+compiler on moon 0.1.20260629.
+
+### Warning on use: `#alert(category, "msg")`
+
+Attaches a warning to an API that fires at every call site — for `unsafe`,
+`experimental`, or project-specific categories, without implying removal the
+way `#deprecated` does:
+
+```mbt nocheck
+#alert(experimental, "parser API may change in 0.x")
+pub fn parse_v2(s : String) -> Ast { ... }
+// call sites warn: Warning (alert_experimental): parser API may change in 0.x
+```
+
+Control per category via the package warn-list: warning name is
+`alert_<category>`, and `alert` addresses all categories (e.g.
+`warnings = "@alert-alert_unsafe"` in `moon.pkg` = all alerts fatal except
+`unsafe` disabled). Gotcha: `alert_unsafe` is **off by default** — an
+`#alert(unsafe, ...)` is silent until the consumer opts in; pick another
+category if you need the warning visible out of the box.
 
 ## Coverage-driven gap filling
 
@@ -51,8 +164,7 @@ Workflow:
 3. `moon coverage analyze -- -f caret -F <file>` to see which lines/branches.
 4. Add a black-box test through the public API that drives the missing branch. Avoid making something `pub` just to test it — that's an API regression dressed as test work.
 
-
-To exclude a function from coverage stats, use `#coverage.skip` — see `coverage.md` (deprecated functions are excluded automatically).
+To exclude a function from coverage stats, use `#coverage.skip` — see `testing.md` ("Code coverage"; deprecated functions are excluded automatically).
 
 ## Style refactors that pay for themselves
 
@@ -133,6 +245,46 @@ for _ in 0..<n; a = 1, b = 2 {
 ```
 
 Once the state lives in the loop header, you can attach a `where { proof_invariant: ..., proof_reasoning: ... }` block when the algorithm warrants it (see `control-flow.md` "Loop invariants").
+
+## Review-driven readability rules
+
+When writing or addressing review feedback for MoonBit code, apply these
+readability checks across the touched file, not just the exact commented line:
+
+- Prefer direct indexed iteration (`for index, item in array`) over
+  `for index in 0..<array.length()` followed by `array[index]`.
+- When parsing byte/char sequences, prefer array/`BytesView` patterns with rest
+  segments — `[Esc, b'[', ..body, final]`, `[..b"\x1b]", ..rest]` — over
+  index-arithmetic `if`/`else` chains, `match len` ladders, or manual guard
+  sequences.
+- Do not keep helpers that only return a constant, wrap a single obvious
+  expression, or rename a trivial mutation. Inline them unless the helper
+  enforces an invariant or names a real domain action.
+- Prefer labeled/optional arguments on constructor functions over `.with_*`
+  builder chains — `T::new(bg~, label?)`, not `T::new().with_bg(bg).with_label(l)`.
+- Prefer `ArrayView`/`BytesView`/`StringView` parameters over defensive
+  `copy()`/`to_owned()` — document aliasing in the docstring instead of cloning,
+  especially on hot paths.
+- Build strings with interpolation or a `StringBuilder`, not `+` concatenation
+  chains or several parallel `mut String` accumulators.
+- Do not introduce tuple destructuring merely to save a few lines. Prefer
+  named locals or direct branches when values have separate meanings, especially
+  in configuration and environment plumbing. Use tuples only when the grouped
+  values are a cohesive domain result or an established local pattern.
+- When application code needs to catch and render an expected domain or CLI
+  error, define and raise a specific `suberror` instead of using `fail` and
+  parsing its `Failure` text. Reserve `fail` for assertions, impossible states,
+  quick tests, or errors that are intentionally not part of a typed handling
+  path.
+- In state-machine or index-arithmetic logic, add a short local comment for
+  non-obvious boundary handling. Use compact ASCII diagrams when positions or
+  offsets are hard to see from code.
+- Centralize a repeated policy (normalization, filtering, width/limit
+  computation, splitting rules) in the narrowest package that owns it; do not
+  duplicate that logic in downstream consumer packages.
+- Prefer black-box tests for behavior reachable through public package APIs.
+  Keep white-box tests only for private state, cached layout metadata, or
+  invariants that cannot be observed through the public API without widening it.
 
 ## When to stop
 

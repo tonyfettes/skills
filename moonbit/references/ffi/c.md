@@ -13,10 +13,10 @@ Step-by-step workflow for binding any C library to MoonBit using native FFI.
 - Running AddressSanitizer to catch memory bugs
 
 **Companion references:**
-- `c-ffi-ownership.md` — detailed `#owned` / `#borrow` semantics, `moonbit_incref`/`decref` rules
-- `c-ffi-callbacks.md` — callback trampolines (FuncRef, closures)
-- `c-ffi-including-sources.md` — strategies for including C library sources
-- `c-ffi-asan.md` — AddressSanitizer validation
+- `c-ownership.md` — detailed `#owned` / `#borrow` semantics, `moonbit_incref`/`decref` rules
+- `c-callbacks.md` — callback trampolines (FuncRef, closures)
+- `c-sources.md` — strategies for including C library sources
+- `c-asan.md` — AddressSanitizer validation
 
 ## Type mapping
 
@@ -40,7 +40,7 @@ Map C types to MoonBit types before writing any declarations.
 | `struct *` (small, no cleanup) | `struct Foo(Bytes)` | Value-as-Bytes pattern |
 | `struct *` (needs cleanup) | `type Foo` (opaque) | External object with finalizer |
 | `int` (enum/flags) | `UInt`, `Int`, or constant `enum` | `enum Foo { A = 0; B = 1 }` maps to `int32_t` |
-| callback function pointer | `FuncRef[...]` or closure | See `c-ffi-callbacks.md` |
+| callback function pointer | `FuncRef[...]` or closure | See `c-callbacks.md` |
 | output `int *` | `Ref[Int]` | Borrow the Ref |
 
 ## Workflow
@@ -85,7 +85,7 @@ options(
 
 > **Warning — `cc` / `cc-flags` portability:** Setting `cc` disables TCC for debug builds. Setting `cc-flags` with `-I` / `-L` breaks Windows portability. Only set these for system libraries.
 
-**Including library sources**: all files in `"native-stub"` must be in the same directory as `moon.pkg`. For inclusion strategies (flattening, header-only, system library linking), see `c-ffi-including-sources.md`.
+**Including library sources**: all files in `"native-stub"` must be in the same directory as `moon.pkg`. For inclusion strategies (flattening, header-only, system library linking), see `c-sources.md`.
 
 ### Phase 2: FFI layer
 
@@ -191,7 +191,7 @@ Rules:
 - If unsure whether C stores a reference, do NOT use `#borrow`.
 - Use `Ref[T]` with `#borrow` for output parameters where C writes a value back.
 
-See `c-ffi-ownership.md` for detailed semantics.
+See `c-ownership.md` for detailed semantics.
 
 #### String conversion across FFI
 
@@ -318,7 +318,7 @@ pub fn result_from_status(status : Int) -> Unit raise {
 }
 ```
 
-For callback patterns (FuncRef, closures, trampolines), see `c-ffi-callbacks.md`.
+For callback patterns (FuncRef, closures, trampolines), see `c-callbacks.md`.
 
 ### Phase 4: Testing
 
@@ -335,7 +335,7 @@ moon run --target native scripts/run-asan.mbtx -- \
   --pkg main/moon.pkg
 ```
 
-The `run-asan.mbtx` script lives under the skill's `scripts/` directory. See `c-ffi-asan.md` for details.
+The `run-asan.mbtx` script lives under the skill's `scripts/` directory. See `c-asan.md` for details.
 
 ## Decision table
 
@@ -348,8 +348,8 @@ The `run-asan.mbtx` script lives under the skill's `scripts/` directory. See `c-
 | Small C struct, no cleanup | Value-as-Bytes | `moonbit_make_bytes` + `struct Foo(Bytes)` |
 | Borrowed opaque pointer (transfer="none") | `#external pub type Foo` | No finalizer, no RC overhead |
 | C returns null on failure (external object) | `Ref[T]` output + error code | Avoid `T?` return — ABI broken |
-| Callback with data parameter | FuncRef + Callback trick | See `c-ffi-callbacks.md` |
-| Callback without data parameter | FuncRef only | See `c-ffi-callbacks.md` |
+| Callback with data parameter | FuncRef + Callback trick | See `c-callbacks.md` |
+| Callback without data parameter | FuncRef only | See `c-callbacks.md` |
 | C string (UTF-8) output | `Bytes` across FFI | `moonbit_make_bytes` + `memcpy` in C; `@utf8.decode_lossy` in MoonBit |
 | C function uses `bool` in signature | Stub wrapper with `int` | Return `(int)c_func()` in C; accept `int`, cast `(bool)` when calling C |
 | Output parameter (`int *result`) | `Ref[T]` with `#borrow` | C writes into Ref; MoonBit reads `.val` |
@@ -380,9 +380,9 @@ The `run-asan.mbtx` script lives under the skill's `scripts/` directory. See `c-
 
 ## See also
 
-- `c-ffi-ownership.md` — ownership semantics, `#owned`/`#borrow` rules, `moonbit_incref`/`decref` operations
-- `c-ffi-callbacks.md` — FuncRef, closures, trampolines
-- `c-ffi-including-sources.md` — C library source inclusion strategies
-- `c-ffi-asan.md` — AddressSanitizer validation workflow
+- `c-ownership.md` — ownership semantics, `#owned`/`#borrow` rules, `moonbit_incref`/`decref` operations
+- `c-callbacks.md` — FuncRef, closures, trampolines
+- `c-sources.md` — C library source inclusion strategies
+- `c-asan.md` — AddressSanitizer validation workflow
 
-JS / Wasm / Wasm-GC FFI (`extern "js"`, host imports, `#module`) is not covered here — see `ffi-js-wasm.md`.
+JS / Wasm / Wasm-GC FFI (`extern "js"`, host imports, `#module`) is not covered here — see `js-wasm.md`.

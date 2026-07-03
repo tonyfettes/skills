@@ -2,7 +2,7 @@
 
 Detailed reference for ownership transfer and `moonbit_incref`/`moonbit_decref`
 rules. For basic `#borrow`/`#owned` usage and the external object / value-as-bytes
-patterns, see `c-ffi.md` Phase 2.
+patterns, see `c.md` Phase 2.
 
 ## `#owned(param)` Semantics
 

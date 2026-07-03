@@ -4,7 +4,7 @@ Defining types (struct / enum / `extenum` / newtype / type alias / `derive`),
 custom constructors, access control, and pattern matching. Split out of
 `language.md` — traits and methods are in `traits-methods.md`, evolving a
 published API (`#alias`, `#deprecated`, `#visibility`, ...) in
-`api-evolution.md`.
+`refactoring.md` ("Evolving public APIs").
 
 ## Access control
 

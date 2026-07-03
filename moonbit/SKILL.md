@@ -23,25 +23,25 @@ Load the reference matching your current work BEFORE writing code:
 | Methods, traits, trait objects (`&Trait`), trait/impl visibility, dot-resolution rules, operator overloading, indexing operators (`#alias`) | `references/traits-methods.md` |
 | Configuring `derive(...)` — JSON enum styles, rename rules, container/case/field args | `references/derive.md` |
 | Running `moon` commands (check / build / test / fmt / info / run) | `references/toolchain.md` |
-| Project/package layout, imports, `moon.mod`, `moon.pkg` config, dependencies, `using` re-exports | `references/toolchain.md` |
-| Multi-module workspaces (`moon.work`, `moon work init/use/sync`) | `references/toolchain.md` |
-| Designing visibility and public API shape (`pub`, opaque types, `.mbti` review) | `references/types.md` + `references/toolchain.md` |
-| Refactoring (API shrinkage, package splits, coverage gap filling) | `references/refactoring.md` |
-| Evolving a published API (`#alias`, `#as_free_fn`, `#deprecated`, `#label_migration`, `#visibility`, `#alert`) | `references/api-evolution.md` |
+| Project/package layout, imports, `moon.mod`, `moon.pkg` config, dependencies, `using` re-exports | `references/project-config.md` |
+| Multi-module workspaces (`moon.work`, `moon work init/use/sync`) | `references/project-config.md` |
+| Designing visibility and public API shape (`pub`, opaque types, `.mbti` review) | `references/types.md` + `references/project-config.md` |
+| Refactoring (API shrinkage, package splits, coverage gap filling, readability rules) | `references/refactoring.md` |
+| Evolving a published API (`#alias`, `#as_free_fn`, `#deprecated`, `#label_migration`, `#visibility`, `#alert`) | `references/refactoring.md` |
 | Optimizing data layout with `#valtype` (unboxing, flat arrays, value enums, the visibility interaction) | `references/valtype.md` |
 | Optimizing hot-path code on the native backend (refcount traffic, polymorphic `Eq` on enums, cross-package inlining, reading generated C/asm, `moon tool demangle` for `_M0...` symbols) | `references/optimization.md` |
 | SIMD with the experimental `V128` type (`@v128` lane ops, wasm SIMD128 mirror) | `references/optimization.md` |
 | Async IO (`moonbitlang/async` setup, `with_task_group`, async tests, cancellation-safe cleanup, backpressure) | `references/async.md` |
 | Writing tests (snapshot `inspect` family, black-box defaults, docstring tests, `@test.T::snapshot`, error assertions) | `references/testing.md` |
-| Measuring performance (`@bench.T` benchmarks, native `--profile`, before/after methodology) | `references/bench-profile.md` |
+| Measuring performance (`@bench.T` benchmarks, native `--profile`, before/after methodology) | `references/optimization.md` |
 | Code navigation with `moon ide` (outline/peek-def/find-references/rename/hover/doc) | `references/moon-ide.md` |
-| Binding a C library (`extern "c"`, stubs, ownership, callbacks, ASan) | `references/c-ffi.md` (+ topic-specific c-ffi-*.md) |
-| JS / Wasm / Wasm-GC FFI (`extern "js"`, `#module`, host imports, exports, `moonbit:ffi` callbacks) | `references/ffi-js-wasm.md` |
-| Writing standalone `.mbtx` scripts (script skeleton, inline imports, run commands; package APIs go through the API Lookup Rule) | `references/mbtx.md` |
-| Conditional compilation, link configuration, pre-build commands, warning control | `references/toolchain.md` |
-| Code coverage (`moon test --enable-coverage`, `moon coverage analyze/report/clean`, report formats, CI upload, `#coverage.skip`) | `references/coverage.md` |
+| Binding a C library (`extern "c"`, stubs, ownership, callbacks, ASan) | `references/ffi/c.md` (+ topic files in `references/ffi/`) |
+| JS / Wasm / Wasm-GC FFI (`extern "js"`, `#module`, host imports, exports, `moonbit:ffi` callbacks) | `references/ffi/js-wasm.md` |
+| Writing standalone `.mbtx` scripts (script skeleton, inline imports, run commands; package APIs go through the API Lookup Rule) | `references/toolchain.md` |
+| Conditional compilation, link configuration, pre-build commands, warning control | `references/project-config.md` |
+| Code coverage (`moon test --enable-coverage`, `moon coverage analyze/report/clean`, report formats, CI upload, `#coverage.skip`) | `references/testing.md` |
 | Publishing to mooncakes.io (`moon register/login/publish`, semver/MVS, `include`/`exclude` filtering, `moon tree/install/upgrade`) | `references/publishing.md` |
-| Wasm Component Model (WIT, `wit-bindgen moonbit`, `wasm-tools component embed/new/wit`, wasmtime) | `references/wasm-component.md` |
+| Wasm Component Model (WIT, `wit-bindgen moonbit`, `wasm-tools component embed/new/wit`, wasmtime) | `references/ffi/wasm-component.md` |
 
 ## Top recurring mistakes — check before every edit
 
@@ -128,50 +128,18 @@ Pay special attention to:
    - use `pub(all)` rarely, only when outside construction is part of the contract
    - internal state machines, parse tables, accumulators, and helper parsers should stay internal
    - white-box tests are not justification for making internals public
-   - public concrete types belong in the package users name (or a public package it re-exports) — never defined in `internal/*` and recovered via `pub using`; see "Type ownership" in `references/toolchain.md`
+   - public concrete types belong in the package users name (or a public package it re-exports) — never defined in `internal/*` and recovered via `pub using`; see "Type ownership" in `references/project-config.md`
 7. **Validate in a tight loop.** `moon check` after edits; add `--warn-list +unnecessary_annotation` (equivalent to `--warn-list +73`) when cleaning redundant annotations and over-qualified constructors. `moon test [dirname|filename] --filter 'glob'` for targeted tests. `moon test --update` for snapshot changes.
 
 8. **Finalize before handoff.** Always run `moon fmt` and `moon info` before committing — the user expects formatted code and up-to-date `.mbti` files in every commit. Review `pkg.generated.mbti` for necessity, not just change: remove unjustified public items and public mutable fields before considering the task done. Report changed files, validation commands, and any remaining risks.
 
 ## Review-Driven Readability Rules
 
-When writing or addressing review feedback for MoonBit code, apply these
-readability checks across the touched file, not just the exact commented line:
-
-- Prefer direct indexed iteration (`for index, item in array`) over
-  `for index in 0..<array.length()` followed by `array[index]`.
-- When parsing byte/char sequences, prefer array/`BytesView` patterns with rest
-  segments — `[Esc, b'[', ..body, final]`, `[..b"\x1b]", ..rest]` — over
-  index-arithmetic `if`/`else` chains, `match len` ladders, or manual guard
-  sequences.
-- Do not keep helpers that only return a constant, wrap a single obvious
-  expression, or rename a trivial mutation. Inline them unless the helper
-  enforces an invariant or names a real domain action.
-- Prefer labeled/optional arguments on constructor functions over `.with_*`
-  builder chains — `T::new(bg~, label?)`, not `T::new().with_bg(bg).with_label(l)`.
-- Prefer `ArrayView`/`BytesView`/`StringView` parameters over defensive
-  `copy()`/`to_owned()` — document aliasing in the docstring instead of cloning,
-  especially on hot paths.
-- Build strings with interpolation or a `StringBuilder`, not `+` concatenation
-  chains or several parallel `mut String` accumulators.
-- Do not introduce tuple destructuring merely to save a few lines. Prefer
-  named locals or direct branches when values have separate meanings, especially
-  in configuration and environment plumbing. Use tuples only when the grouped
-  values are a cohesive domain result or an established local pattern.
-- When application code needs to catch and render an expected domain or CLI
-  error, define and raise a specific `suberror` instead of using `fail` and
-  parsing its `Failure` text. Reserve `fail` for assertions, impossible states,
-  quick tests, or errors that are intentionally not part of a typed handling
-  path.
-- In state-machine or index-arithmetic logic, add a short local comment for
-  non-obvious boundary handling. Use compact ASCII diagrams when positions or
-  offsets are hard to see from code.
-- Centralize a repeated policy (normalization, filtering, width/limit
-  computation, splitting rules) in the narrowest package that owns it; do not
-  duplicate that logic in downstream consumer packages.
-- Prefer black-box tests for behavior reachable through public package APIs.
-  Keep white-box tests only for private state, cached layout metadata, or
-  invariants that cannot be observed through the public API without widening it.
+When writing new MoonBit code or addressing review feedback, apply the
+readability checks in `references/refactoring.md` ("Review-driven readability
+rules") across the touched file, not just the exact commented line — indexed
+iteration, view patterns over index arithmetic, no trivial helpers, labeled
+args over builder chains, typed `suberror` over `fail`-text parsing, and more.
 
 ## Fast Task Playbooks
 
@@ -207,7 +175,7 @@ For migration shims (`#as_free_fn`, `#alias(old, deprecated)`), package splits v
 
 ## Project Layouts
 
-MoonBit uses `.mbt` for source files and `.mbti` for interface files. At the top of a project there is a `moon.mod` file with module metadata. The project may contain multiple packages, each with `moon.pkg` (preferred) or `moon.pkg.json` (legacy). Subdirectories can also contain `moon.mod` to scope a different dependency set. Legacy projects may still contain `moon.mod.json`; treat it as the old module metadata format and migrate/update guidance to `moon.mod` instead of creating new `moon.mod.json` files. Repos with **multiple modules** add a `moon.work` workspace manifest at the root listing member modules — see `references/toolchain.md` (`moon work init/use/sync`).
+MoonBit uses `.mbt` for source files and `.mbti` for interface files. At the top of a project there is a `moon.mod` file with module metadata. The project may contain multiple packages, each with `moon.pkg` (preferred) or `moon.pkg.json` (legacy). Subdirectories can also contain `moon.mod` to scope a different dependency set. Legacy projects may still contain `moon.mod.json`; treat it as the old module metadata format and migrate/update guidance to `moon.mod` instead of creating new `moon.mod.json` files. Repos with **multiple modules** add a `moon.work` workspace manifest at the root listing member modules — see `references/project-config.md` (`moon work init/use/sync`).
 
 ### Example layout
 
@@ -294,6 +262,6 @@ my_module
 - **Don't use deprecated `Json` accessors** (`.value(key)`, `.as_string()`, ...) — pattern-match instead: `if json is Object(obj) { obj.get(key) }`, `if json is String(s) { ... }`.
 - **`#valtype` has hard limits** (currently ≤6 fields, no `mut` fields, no abstract-type fields, no nested value types — limits may be relaxed in future compiler releases) — check `references/valtype.md` before annotating.
 - **Search core before hand-rolling utilities** — case-insensitive compare is `equal_ignore_ascii_case`, substring scan is `String::contains_any`, clamping is `Int::clamp`, String↔Bytes is `moonbitlang/core/encoding/utf8`. If it feels like a common utility, look it up first (see API Lookup Rule).
-- **Don't assert performance conclusions without measuring** — no "this is faster/slower" claims without a benchmark or profile run; propose the measurement first (see `references/bench-profile.md`).
+- **Don't assert performance conclusions without measuring** — no "this is faster/slower" claims without a benchmark or profile run; propose the measurement first (see `references/optimization.md`).
 
-For complete syntax details, see `references/language.md` (and its topic files `types.md`, `strings-regex.md`, `collections.md`, `bytes.md`, `errors.md`, `control-flow.md`, `traits-methods.md`). For `moon` tooling, see `references/toolchain.md` and `references/moon-ide.md`.
+For complete syntax details, see `references/language.md` (and its topic files `types.md`, `strings-regex.md`, `collections.md`, `bytes.md`, `errors.md`, `control-flow.md`, `traits-methods.md`). For `moon` tooling, see `references/toolchain.md` (commands), `references/project-config.md` (module/package config), and `references/moon-ide.md`.
