@@ -125,6 +125,19 @@ fn collect_bench() -> Unit {
 
 Time units in the summary are microseconds. The `Summary` type's exact shape is not stability-guaranteed — treat it as observable JSON.
 
+**Custom timing harnesses** — when `@bench.T` / `single_bench` cannot wrap the
+code directly, for example an async benchmark that must avoid measuring event
+loop startup, use the lower-level monotonic clock helpers from
+`moonbitlang/core/bench` instead of adding a project-local timer stub:
+
+```mbt nocheck
+let start = @bench.monotonic_clock_start()
+// run the operation being measured
+let elapsed_us = @bench.monotonic_clock_end(start)
+```
+
+`monotonic_clock_end` returns elapsed microseconds as a `Double`.
+
 ### Profiling (native)
 
 ```sh
