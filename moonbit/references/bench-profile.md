@@ -91,6 +91,10 @@ inline into the caller, so a `callee <- moonbit_decref_inlined` line means
 the cost lives in `callee`'s body, often from a *different* source function
 that clang inlined into it).
 
+If a profile frame shows a raw mangled C symbol (`_M0...`), decode it with
+`moon tool demangle _M0MP26tester4demo5Point4norm` →
+`@tester/demo.Point::norm` (see `optimization.md`).
+
 ### Before/after methodology
 
 Profiling is noisy at a few hundred 1 ms samples. For an honest before/after,

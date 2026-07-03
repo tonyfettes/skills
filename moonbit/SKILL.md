@@ -25,7 +25,7 @@ Load the reference matching your current work BEFORE writing code:
 | Designing visibility and public API shape (`pub`, opaque types, `.mbti` review) | `references/language.md` + `references/toolchain.md` |
 | Refactoring (API shrinkage, package splits, fn↔method, coverage gap filling) | `references/refactoring.md` |
 | Optimizing data layout with `#valtype` (unboxing, flat arrays, value enums, the visibility interaction) | `references/valtype.md` |
-| Optimizing hot-path code on the native backend (refcount traffic, polymorphic `Eq` on enums, cross-package inlining, reading generated C/asm) | `references/optimization.md` |
+| Optimizing hot-path code on the native backend (refcount traffic, polymorphic `Eq` on enums, cross-package inlining, reading generated C/asm, `moon tool demangle` for `_M0...` symbols) | `references/optimization.md` |
 | SIMD with the experimental `V128` type (`@v128` lane ops, wasm SIMD128 mirror) | `references/optimization.md` |
 | Async IO (`moonbitlang/async` setup, `with_task_group`, async tests, cancellation-safe cleanup, backpressure) | `references/async.md` |
 | Writing tests (snapshot `inspect` family, black-box defaults, docstring tests, `@test.T::snapshot`, error assertions) | `references/testing.md` |

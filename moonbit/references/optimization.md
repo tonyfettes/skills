@@ -31,7 +31,19 @@ two lowering stages (moonc → C → clang/gcc). The workflow:
 2. Find the function. Symbols are mangled
    `_M0MP<len><module><len><pkg><len><Type><len><method>`; the **definition**
    is the `^int32_t _M0MP...name(` line (earlier matches are forward
-   declarations / call sites). Take the last match.
+   declarations / call sites). Take the last match. To go the other way —
+   from a C symbol (in generated C, `nm`, or a profiler stack) back to the
+   MoonBit name — use `moon tool demangle`:
+   ```sh
+   $ moon tool demangle _M0MP26tester4demo5Point4norm _M0FP26tester4demo8identityGiE
+   @tester/demo.Point::norm
+   @tester/demo.identity[Int]
+   ```
+   It also decodes trait-impl symbols (`_M0IP...` →
+   `impl @.../builtin.Show for ... with to_string`). Feed it the symbol as it
+   appears in the C source; strip the extra leading `_` that macOS `nm`
+   prepends (`__M0...` → `_M0...`), otherwise the name passes through
+   undemangled. Unrecognized input is echoed back unchanged.
 3. For the machine-code truth, compile that one C TU to assembly:
    ```sh
    clang -O2 -I"$(dirname "$(find ~/Library/MoonBit ~/.moon -name moonbit.h | head -1)")" \
