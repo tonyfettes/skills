@@ -26,6 +26,33 @@ test "expressions return values" {
 (Don't use a two-arm Option `match` to demonstrate this — for Options, use
 `unwrap_or` / `if x is Some(v)` / `guard x is Some(v) else`; see `language.md`.)
 
+### Pipe operator `|>`
+
+`x |> f` is `f(x)`; `x |> f(y)` inserts `x` as the **first** argument — `f(x, y)`.
+Useful for left-to-right data pipelines across free functions and `Type::method`
+references:
+
+```mbt check
+///|
+fn add(a : Int, b : Int) -> Int {
+  a + b
+}
+
+///|
+test "pipe" {
+  let r = [3, 1, 2]
+    |> Array::map(x => x * 10)
+    |> Array::fold(init=0, add)
+  inspect(r, content="60")
+}
+```
+
+The reverse pipe `f <| x` is `f(x)` (right-associative). It reads well for
+DSL-ish trailing arguments — e.g. `h1 <| [ ... ]` in rabbita views, and similar
+patterns in `moonbitlang/async` code. To pipe into a non-first argument, use an
+arrow lambda — the body needs braces (or parenthesize the whole lambda):
+`x |> y => { f(a, y) }`. A bare `x |> y => f(a, y)` is a parse error.
+
 ### Functional `for` loop
 
 ```mbt check
@@ -34,7 +61,7 @@ pub fn binary_search(arr : ArrayView[Int], value : Int) -> Result[Int, Int] {
   let len = arr.length()
   // for: initial state; [predicate]; [post-update] {
   //   body — `continue` updates state
-  // } else { exit block }
+  // } nobreak { exit block }
   for i = 0, j = len; i < j; {
     let h = i + (j - i) / 2
     if arr[h] < value {
@@ -42,13 +69,13 @@ pub fn binary_search(arr : ArrayView[Int], value : Int) -> Result[Int, Int] {
     } else {
       continue i, h
     }
-  } else {
+  } nobreak {
     if i < len && arr[i] == value { Ok(i) } else { Err(i) }
   } where {
-    invariant: 0 <= i && i <= j && j <= len,
-    invariant: i == 0 || arr[i - 1] < value,
-    invariant: j == len || arr[j] >= value,
-    reasoning: (
+    proof_invariant: 0 <= i && i <= j && j <= len,
+    proof_invariant: i == 0 || arr[i - 1] < value,
+    proof_invariant: j == len || arr[j] >= value,
+    proof_reasoning: (
       #|For a sorted array, boundary invariants are witnesses:
       #|  arr[i-1] < value implies all arr[0..i) < value (by sortedness)
       #|  arr[j] >= value implies all arr[j..len) >= value
@@ -78,11 +105,14 @@ Attaches machine-checkable invariants and human-readable reasoning:
 for ... {
   ...
 } where {
-  invariant : <boolean_expr>,
-  invariant : <boolean_expr>,
-  reasoning : <string>
+  proof_invariant : <boolean_expr>,
+  proof_invariant : <boolean_expr>,
+  proof_reasoning : <string>
 }
 ```
+
+(The older `invariant:` / `reasoning:` keys are deprecated — `reasoning:` already
+warns; use the `proof_`-prefixed names.)
 
 Writing good invariants:
 1. **Checkable** — use valid boolean expressions over loop variables.
@@ -138,12 +168,15 @@ test "while with break value" {
       break Some(i)                          // exit with a value
     }
     i = i + 1
-  } else {
+  } nobreak {
     None                                     // value when loop completes normally
   }
   assert_eq(found, Some(2))
 }
 ```
+
+The no-break block on `while` / functional `for` is spelled `nobreak { ... }`;
+the old `else { ... }` spelling is deprecated (warns, `moon fmt` migrates it).
 
 ### Labelled loops
 

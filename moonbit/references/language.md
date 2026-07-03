@@ -2,14 +2,17 @@
 
 Authoritative syntax reference for writing MoonBit code. Load this before writing any MoonBit syntax you have not recently verified — the language has evolved, and training-era syntax is often wrong.
 
-This file covers the core: gotchas, visibility, user-defined types, pattern matching, reference semantics, and label/optional parameters. Four topics live in sibling files — load them alongside this one when relevant:
+This file covers the core: gotchas, core facts, primitives, reference semantics, `letrec`, and label/optional parameters. Sibling files — load them alongside this one when relevant:
 
 | Topic | File |
 |---|---|
-| Primitives, `Bytes`, Arrays, `String`/`StringView` (UTF-16 safety, interpolation, `<+`/`<?`), `Map`, views | `strings-data.md` |
+| struct / enum / `extenum` / newtype / derive, visibility, pattern matching | `types.md` |
+| `String`/`StringView` (UTF-16 safety, interpolation, `<+`/`<?`), regex | `strings-regex.md` |
+| Arrays, `Map`, views, spread, `Iter` | `collections.md` |
+| `Bytes`, byte containers, bitstring patterns | `bytes.md` |
 | Error handling (`suberror`, `raise`/`catch`/`noraise`, `raise?`, `try`) | `errors.md` |
-| Control flow (`for` / functional `loop` / `while` / labelled loops, loop invariants, `defer`) | `control-flow.md` |
-| Methods, traits, operator overloading, indexing via `#alias` | `traits-methods.md` |
+| Control flow (`for` / functional `loop` / `while`, pipes, loop invariants, `defer`) | `control-flow.md` |
+| Methods, traits, trait objects, operator overloading | `traits-methods.md` |
 
 ---
 
@@ -249,6 +252,7 @@ Don't bother with an explicit alias if it matches the last path segment.
 
 ---
 
+
 ## Core facts
 
 - **Expression-oriented**: `if`, `match`, loops return values; the last expression is the return value.
@@ -260,216 +264,63 @@ Don't bother with an explicit alias if it matches the last path segment.
 - **Placeholders**: `...` is a valid placeholder for incomplete implementations.
 - **Global values**: immutable by default; generally require type annotations.
 - **Garbage collection**: MoonBit has a GC — no lifetime annotations, no ownership system. Unlike Rust (like F#), `let mut` is only needed when you want to **reassign** a variable — NOT for mutating fields of a struct or elements of an array/map.
-- **Toplevel functions are mutually recursive by default** — no need for forward declarations.
+- **Toplevel functions are mutually recursive by default** — no need for forward declarations. Local functions are not: use `letrec f = .. and g = ..` (see below).
+- **Ranges**: `a..<b` (exclusive) / `a..=b` (inclusive) iterate increasing; **decreasing** ranges are `a>..b` (excludes `a`) and `a>=..b` (includes `a`) — `for i in 3>..0` yields `2, 1, 0`; `for i in 3>=..0` yields `3, 2, 1, 0`.
 
 ---
 
-## Access control
 
-Fine-grained visibility modifiers.
+## Primitives: Int, Char, Byte
 
-```mbt nocheck
-///|
-/// `fn` defaults to private — only visible in current package
-fn internal_helper() -> Unit { ... }
-
-///|
-pub fn get_value() -> Int { ... }
-
-///|
-/// Struct (default) — type visible outside package as abstract, implementation hidden
-struct DataStructure { }
-
-///|
-/// `priv struct` — fully hidden: name unreferenceable outside the package
-priv struct Secret { }
-
-///|
-/// `pub struct` — readable and pattern-matchable outside package, NOT constructible outside
-pub struct Config { }
-
-///|
-/// `pub(all)` — full access: read, pattern match, AND construct outside
-pub(all) struct Config2 { }
-
-///|
-/// Abstract trait (default) — cannot be implemented by types outside this package
-pub trait MyTrait { }
-
-///|
-/// `pub(open)` — trait CAN be implemented for outside packages
-pub(open) trait Extendable { }
-```
-
-**Public cannot depend on `priv`** — `pub struct X(Inner)` (or `pub fn` signatures) referencing a `priv Inner` fails with `[4046] A public definition cannot depend on private type`. Default `struct` (no modifier) is already abstract to outside packages, so it works as the inner of a `pub` newtype. Only reach for `priv` when you want the type name itself completely unnameable from other packages — and in that case, drop `pub` on the wrapper too and export it via `pub fn X::new(...)` methods (the type becomes opaque in the `.mbti`).
-
-### Visibility design heuristics
-
-Use this decision order when choosing visibility:
-
-1. If the item is purely implementation detail, keep it private.
-   Use `priv` for helper types whose names should not appear in public
-   signatures or `.mbti`.
-2. If outside code only needs to hold/pass the value and call methods, prefer
-   opaque `struct` / `enum` without `pub`.
-3. If outside code needs to inspect fields or pattern-match variants, use
-   `pub struct` / public enum deliberately.
-4. If outside code must also construct the value directly, consider `pub(all)`,
-   but treat that as a stronger API promise.
-
-Review `.mbti` after `moon info` with this lens:
-
-- Could this public item be private?
-- Could this readable type be opaque instead?
-- Is a public mutable field really necessary?
-- Is this item public only because tests currently touch it?
-
----
-
-## User-defined types
-
-### struct
+MoonBit supports `Byte`, `Int16`, `Int`, `UInt16`, `UInt`, `Int64`, `UInt64`, `Float`, `Double`, etc. Literals overload when the type is known:
 
 ```mbt check
 ///|
-struct Point {
-  x : Int
-  mut y : Int                                // `mut` allows field mutation
-} derive(Debug, ToJson, Eq)
-
-///|
-/// `Type::` can be omitted when the type is already known in context
-let p : Point = Point::{ x: 10, y: 20 }
-
-///|
-/// pub(all) — readable AND constructible outside the package
-pub(all) struct Config {
-  host : String
-  port : Int
-} derive(Debug, Eq, ToJson, FromJson)
-```
-
-### enum
-
-```mbt check
-///|
-enum Tree[T] {
-  Leaf(T)                                           // no trailing comma
-  Node(left~ : Tree[T], T, right~ : Tree[T])        // variants can use labels
-} derive(Debug, ToJson)
-
-///|
-pub enum MyResult[T, E] {
-  MyOk(T)                                           // semicolon optional when newline follows
-  MyErr(E)                                          // variants must start Uppercase
-} derive(Debug, Eq, ToJson)
-
-///|
-pub fn Tree::sum(tree : Tree[Int]) -> Int {
-  match tree {
-    Leaf(x) => x                                    // no `Tree::` needed when type known
-    Node(left~, x, right~) => left.sum() + x + right.sum()
-  }
+test "integer/char literal overloading via context" {
+  let a0 = 1 // Int by default
+  let (int, uint, uint16, int64, byte) : (Int, UInt, UInt16, Int64, Byte) = (
+    1, 1, 1, 1, 1,
+  )
+  assert_eq(int, uint16.to_int())
+  let a1 : Int = 'b'    // unicode value
+  let a2 : Char = 'b'
 }
 ```
 
-### Newtype / tuple-struct
+### `Char` ASCII casing
 
-Single-field structs with positional syntax. Access via `.0`, `.1`, etc.
+For ASCII-only casing, use:
 
-```mbt check
-///|
-struct Meters(Int)
+- `Char::to_ascii_lowercase`
+- `Char::to_ascii_uppercase`
 
-///|
-let distance : Meters = Meters(100)
+If you need full Unicode case conversion or locale-sensitive text transforms,
+do not guess or hand-roll it. Use a dedicated library only after confirming
+with the user.
 
-///|
-let raw : Int = distance.0                 // .0 for first positional field
+### Numeric literal forms & BigInt
 
-///|
-/// Newtype wrapping a closure — directly callable
-pub struct Handler((String) -> Unit)
-// let h : Handler = Handler(s => println(s))
-// h("hello")                                // calls the closure directly
-```
-
-### Type alias
-
-```mbt nocheck
-pub type UserId = Int                       // Int is aliased to UserId (symlink-like)
-```
-
-### Derivable traits
-
-Most types can auto-derive standard traits with `derive(...)`:
-
-| Trait | Enables |
-|---|---|
-| `Debug` | `debug_inspect()` for structural test/diagnostic output — the derivable default for your own data types. For interpolation of composed values use `\{to_repr(value)}` |
-| `Show` | Specialized display strings (JSON, XML, user-facing text). Deriving it for debugging is deprecated in favor of `Debug`; write a manual `impl Show for T with output(self, logger) { ... }` only for genuine display formats |
-| `Eq` | `==`, `!=` |
-| `Compare` | `<`, `>`, `<=`, `>=` |
-| `ToJson` | `json_inspect()` for readable test output |
-| `FromJson` | JSON deserialization |
-| `Hash` | Map keys |
+`0b`/`0o`/`0x` prefixes (case-insensitive), underscores **anywhere** in the
+number (not just every three digits), and suffixes `U` (`UInt`), `L` (`Int64`),
+`UL` (`UInt64`), `N` (`BigInt`). `BigInt` is arbitrary-precision; plain
+literals also overload to it when the type is known.
 
 ```mbt check
 ///|
-struct Coordinate {
-  x : Int
-  y : Int
-} derive(Debug, Eq, ToJson)
-
-///|
-enum Status {
-  Active
-  Inactive
-} derive(Debug, Eq, Compare)
-```
-
-**Best practice**: always derive `Debug` and `Eq` for data types; add `ToJson` if you test them with `json_inspect()`. Reserve `Show` for genuine display formats via a manual `impl`.
-
----
-
-## Pattern matching
-
-Match expressions return values. Extensive patterns on arrays, structs, strings.
-
-```mbt check
-///|
-#warnings("-unused_value")
-test "pattern matching on Array, struct, StringView" {
-  let arr : Array[Int] = [10, 20, 25, 30]
-  match arr {
-    [] => ...                                        // empty
-    [single] => ...                                  // single element
-    [first, .. middle, rest] => {
-      let _ : ArrayView[Int] = middle                // middle is ArrayView[Int]
-      assert_true(first is 10 && middle is [20, 25] && rest is 30)
-    }
-  }
-
-  fn process_point(point : Point) -> Unit {
-    match point {
-      { x: 0, y: 0 } => ...
-      { x, y } if x == y => ...
-      { x, .. } if x < 0 => ...
-      ...
-    }
-  }
-
-  fn is_palindrome(s : StringView) -> Bool {
-    loop s {
-      [] | [_] => true
-      [a, .. rest, b] if a == b => continue rest    // a, b are Char; rest is StringView
-      _ => false
-    }
-  }
+test "numeric literal forms" {
+  let bin = 0b110010                    // 50
+  let oct = 0o377                       // 255
+  let hex = 0xFF_FF                     // underscores anywhere, not just per-3
+  let i64 : Int64 = 42L
+  let u : UInt = 42U
+  let u64 : UInt64 = 42UL
+  let big : BigInt = 10000000000000000000000N
+  let big2 : BigInt = 42                // plain literal overloads to BigInt too
+  inspect(big * big2, content="420000000000000000000000")
+  ignore((bin, oct, hex, i64, u, u64))
 }
 ```
 
----
 
 ## Reference semantics
 
@@ -509,6 +360,24 @@ test "reference semantics" {
 
 ---
 
+
+## Local mutually recursive functions: `letrec`
+
+Toplevel functions see each other freely, but a **local** `fn` can only refer to itself and to local functions defined *before* it. For local mutual recursion, use `letrec ... and ...`:
+
+```mbt check
+///|
+test "letrec" {
+  letrec even = x => x == 0 || odd(x - 1)
+  and odd = x => x != 0 && even(x - 1)
+  assert_true(even(10))
+  assert_true(odd(7))
+}
+```
+
+---
+
+
 ## Label and optional parameters
 
 ```mbt check
@@ -523,7 +392,7 @@ fn g(
   let _ : Int = required
   let _ : Int? = optional
   let _ : Int = optional_with_default
-  "\{positional},\{required},\{optional},\{optional_with_default}"
+  "\{positional},\{required},\{to_repr(optional)},\{optional_with_default}"
 }
 
 ///|
@@ -539,7 +408,7 @@ test {
 ```mbt check
 ///|
 fn with_config(a : Int?, b : Int?, c : Int) -> String {
-  "\{a},\{b},\{c}"
+  "\{to_repr(a)},\{to_repr(b)},\{c}"
 }
 
 ///|
@@ -580,5 +449,23 @@ fn not_idiomatic(opts : APIOptions, arg : Int) -> Unit { }
 ///|
 test {
   not_idiomatic({ width: Some(5), height: None }, 10)          // awkward at call site
+}
+```
+
+### Autofill arguments: `SourceLoc` / `ArgsLoc`
+
+`#callsite(autofill(...))` makes the compiler fill listed labelled arguments at each call site when the caller omits them. Two supported types: `SourceLoc` (location of the whole call) and `ArgsLoc` (per-argument locations). This is how `assert_eq`/`inspect` report caller locations — the key tool for writing assertion/test helpers:
+
+```mbt check
+///|
+#callsite(autofill(loc, args_loc))
+fn where_am_i(msg : String, loc~ : SourceLoc, args_loc~ : ArgsLoc) -> String {
+  "\{msg} at \{loc}; args at \{args_loc}"
+}
+
+///|
+test "autofill" {
+  let s = where_am_i("boom")                  // loc/args_loc filled automatically
+  assert_true(s.contains(".mbt"))
 }
 ```

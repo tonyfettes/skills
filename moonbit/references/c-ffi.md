@@ -385,4 +385,4 @@ The `run-asan.mbtx` script lives under the skill's `scripts/` directory. See `c-
 - `c-ffi-including-sources.md` — C library source inclusion strategies
 - `c-ffi-asan.md` — AddressSanitizer validation workflow
 
-JS FFI follows similar principles (`extern "js"`) but is not covered here — see MoonBit's official documentation.
+JS / Wasm / Wasm-GC FFI (`extern "js"`, host imports, `#module`) is not covered here — see `ffi-js-wasm.md`.

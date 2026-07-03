@@ -137,6 +137,26 @@ callee is multi-level or returns a constructed value:
 So: make hot leaves single, branchless expressions. Don't fight the inliner
 on value-returning matches — instead avoid the call (see Pitfall 4).
 
+### `#inline` / `#inline(never)` attributes
+
+Before restructuring a callee, try the attribute:
+
+```mbt nocheck
+#inline           // hint: inline when possible
+fn add_one(x : Int) -> Int { x + 1 }
+
+#inline(never)    // hint: keep the call (cold paths, profiling anchors)
+fn slow_path_rescan(self : Grid) -> Unit { ... }
+```
+
+Both are *hints* — they don't change source-level behavior, and the compiler
+may still decide otherwise (which is why the source-shaping advice above
+exists: a single-expression leaf gets inlined with or without the hint, and a
+value-returning `match` may not even with it). `#inline(never)` is also useful
+to keep a cold branch out of a hot function's body and to keep a symbol
+visible in profiler stacks. Either way, verify the outcome in the generated C
+(step 2 of the golden rule), not by assumption.
+
 ## Pitfall 4 — split functions re-derive and re-check what a sibling knows
 
 When a per-element operation is spread across functions (e.g. `read old →

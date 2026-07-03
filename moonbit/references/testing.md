@@ -21,6 +21,22 @@ Snapshot tests are preferred — easy to update when behavior changes.
 - **Panics**: Name tests with prefix `test "panic ..." {...}`. If the call returns a value, wrap it with `ignore(...)` to silence warnings.
 - **Comparing two computed values** is `@debug.assert_eq` — `inspect(x, content=...)` / `debug_inspect` are for literal expected content; never interpolate the expected value into `content="\{y}"`.
 
+## Skipping a test: `#skip`
+
+`#skip` (or `#skip("reason")`) on a `test` block skips it at run time. The
+block is **still type-checked**, so it can't rot silently — prefer this over
+commenting a test out:
+
+```mbt check
+///|
+#skip("blocked by external service")
+test "not run, but still type-checked" {
+  fail("never executes")
+}
+```
+
+Skipped tests simply don't appear in the pass/fail totals.
+
 ## Docstring tests
 
 Public APIs are encouraged to have docstring tests:
@@ -45,9 +61,60 @@ pub fn sum_array(xs : Array[Int]) -> Int {
 
 MoonBit code in docstrings is type-checked and tested automatically (via `moon test --update`). In docstrings, `mbt check` blocks should only contain `test` or `async test`.
 
-`*.mbt.md` files are also black-box test files — code blocks tagged
-` ```mbt check ` run under `moon check` / `moon test`. See "README.mbt.md
-generation" in `toolchain.md`.
+**Doc tests are always blackbox.** They compile as black-box tests of the
+package, so a doc test can only call the public API — a doc test on a *private*
+definition cannot reference that definition (unbound identifier). Don't attach
+example tests to private items; test them via `*_wbtest.mbt` instead.
+
+## `.mbt.md` literate files
+
+`*.mbt.md` files are black-box test files inside a package, and also work as
+**standalone single-file projects**:
+
+```bash
+moon check README.mbt.md    # standalone: no moon.mod/moon.pkg needed
+moon test  README.mbt.md
+```
+
+(Inside a project, keep using package-level `moon check` / `moon test`.)
+
+The code-fence language id controls handling — there are four:
+
+| Fence id | Semantics |
+|---|---|
+| `mbt` | compiled, but creates no test entry |
+| `mbt check` | document-test code; put `test { .. }` / `async test` inside for assertions |
+| `mbt nocheck` | displayed MoonBit, not compiled or tested |
+| `moonbit` | ordinary display block, not compiled or tested |
+
+Gotchas (verified with moon 0.1.20260629):
+
+- All `mbt check` blocks in one file share a scope — a `fn` in one block is
+  visible to a `test` in a later block.
+- Plain `mbt` blocks were **not actually type-checked** by this toolchain
+  version despite the documented semantics (a type error inside passed
+  `moon check`/`moon test` silently). Put anything you want verified in
+  `mbt check`.
+
+Standalone files can declare YAML front matter for imports and target:
+
+```markdown
+---
+moonbit:
+  import:
+    - moonbitlang/core/ref              # string form
+    - path: moonbitlang/core/ref        # map form with explicit alias
+      alias: ref
+  backend:
+    js                                  # target backend for this file
+---
+```
+
+Use `moonbit.import` to name importable packages directly (third-party
+entries take the form `username/module@version/package`). Use `moonbit.deps`
+(a `module: version` map) to declare module dependencies and let Moon
+synthesize imports — but note `deps` without `import` imports *all* packages
+of the module (legacy behavior, warns); prefer explicit `import`.
 
 ## Full-output snapshots with `@test.T::snapshot`
 

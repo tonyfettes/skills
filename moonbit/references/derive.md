@@ -1,6 +1,6 @@
 # `derive(...)` Reference
 
-Configuring auto-derived traits. For the bare list of derivable traits, see `language.md`. This file covers the configuration arguments — especially for `FromJson` / `ToJson`, where the defaults often aren't what you want.
+Configuring auto-derived traits. For the bare list of derivable traits, see `types.md`. This file covers the configuration arguments — especially for `FromJson` / `ToJson`, where the defaults often aren't what you want.
 
 ## Quick rules
 

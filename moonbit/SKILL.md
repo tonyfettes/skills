@@ -13,17 +13,21 @@ Load the reference matching your current work BEFORE writing code:
 
 | Task | Read |
 |---|---|
-| Writing MoonBit syntax — core (structs/enums/newtypes, pattern matching, visibility, constants, options, label/optional params) | `references/language.md` |
-| Strings, `StringView`, UTF-16 safety, interpolation (`<+`/`<?`), `Bytes`, Arrays, `Map`, views | `references/strings-data.md` |
+| Writing MoonBit syntax — core (gotchas, primitives/`BigInt`, constants, options, label/optional params, `letrec`, autofill `SourceLoc`) | `references/language.md` |
+| Defining types (structs/enums/newtypes, custom constructors, `extenum`, derive) + visibility + pattern matching | `references/types.md` |
+| Strings, `StringView`, UTF-16 safety, interpolation (`<+`/`<?`), regex (`re"..."`, `=~`) | `references/strings-regex.md` |
+| Arrays, `Map`, view types, spread `..x`, `Iter`/`iter()` protocol | `references/collections.md` |
+| `Bytes`, byte containers (`Buffer()`), `BytesView`, bitstring patterns (binary parsing) | `references/bytes.md` |
 | Error handling (`suberror`, `raise`/`catch`/`noraise`, `raise?`, `try`) | `references/errors.md` |
-| Loops and control flow (`for`, functional `loop`, `while`, labelled loops, loop invariants, `defer`) | `references/control-flow.md` |
-| Methods, traits, operator overloading, indexing operators (`#alias`) | `references/traits-methods.md` |
+| Loops and control flow (`for`, functional `loop`, `while`/`nobreak`, labelled loops, pipe operators, loop invariants, `defer`) | `references/control-flow.md` |
+| Methods, traits, trait objects (`&Trait`), trait/impl visibility, dot-resolution rules, operator overloading, indexing operators (`#alias`) | `references/traits-methods.md` |
 | Configuring `derive(...)` — JSON enum styles, rename rules, container/case/field args | `references/derive.md` |
 | Running `moon` commands (check / build / test / fmt / info / run) | `references/toolchain.md` |
 | Project/package layout, imports, `moon.mod`, `moon.pkg` config, dependencies, `using` re-exports | `references/toolchain.md` |
 | Multi-module workspaces (`moon.work`, `moon work init/use/sync`) | `references/toolchain.md` |
-| Designing visibility and public API shape (`pub`, opaque types, `.mbti` review) | `references/language.md` + `references/toolchain.md` |
-| Refactoring (API shrinkage, package splits, fn↔method, coverage gap filling) | `references/refactoring.md` |
+| Designing visibility and public API shape (`pub`, opaque types, `.mbti` review) | `references/types.md` + `references/toolchain.md` |
+| Refactoring (API shrinkage, package splits, coverage gap filling) | `references/refactoring.md` |
+| Evolving a published API (`#alias`, `#as_free_fn`, `#deprecated`, `#label_migration`, `#visibility`, `#alert`) | `references/api-evolution.md` |
 | Optimizing data layout with `#valtype` (unboxing, flat arrays, value enums, the visibility interaction) | `references/valtype.md` |
 | Optimizing hot-path code on the native backend (refcount traffic, polymorphic `Eq` on enums, cross-package inlining, reading generated C/asm, `moon tool demangle` for `_M0...` symbols) | `references/optimization.md` |
 | SIMD with the experimental `V128` type (`@v128` lane ops, wasm SIMD128 mirror) | `references/optimization.md` |
@@ -32,8 +36,12 @@ Load the reference matching your current work BEFORE writing code:
 | Measuring performance (`@bench.T` benchmarks, native `--profile`, before/after methodology) | `references/bench-profile.md` |
 | Code navigation with `moon ide` (outline/peek-def/find-references/rename/hover/doc) | `references/moon-ide.md` |
 | Binding a C library (`extern "c"`, stubs, ownership, callbacks, ASan) | `references/c-ffi.md` (+ topic-specific c-ffi-*.md) |
+| JS / Wasm / Wasm-GC FFI (`extern "js"`, `#module`, host imports, exports, `moonbit:ffi` callbacks) | `references/ffi-js-wasm.md` |
 | Writing standalone `.mbtx` scripts (script skeleton, inline imports, run commands; package APIs go through the API Lookup Rule) | `references/mbtx.md` |
 | Conditional compilation, link configuration, pre-build commands, warning control | `references/toolchain.md` |
+| Code coverage (`moon test --enable-coverage`, `moon coverage analyze/report/clean`, report formats, CI upload, `#coverage.skip`) | `references/coverage.md` |
+| Publishing to mooncakes.io (`moon register/login/publish`, semver/MVS, `include`/`exclude` filtering, `moon tree/install/upgrade`) | `references/publishing.md` |
+| Wasm Component Model (WIT, `wit-bindgen moonbit`, `wasm-tools component embed/new/wit`, wasmtime) | `references/wasm-component.md` |
 
 ## Top recurring mistakes — check before every edit
 
@@ -92,13 +100,13 @@ Treat `.mbti` files as the public contract. Quote or summarize signatures only
 after reading the current local files. Do not claim an API is unavailable unless
 the current pinned package interface and package search support that conclusion.
 
-If you are about to write MoonBit syntax you have not verified, read the matching reference first (`references/language.md` for core syntax; `strings-data.md`, `errors.md`, `control-flow.md`, `traits-methods.md` for those topics). The language has evolved — training-era syntax may be wrong.
+If you are about to write MoonBit syntax you have not verified, read the matching reference first (`references/language.md` for core syntax; `types.md`, `strings-regex.md`, `collections.md`, `bytes.md`, `errors.md`, `control-flow.md`, `traits-methods.md` for those topics). The language has evolved — training-era syntax may be wrong.
 
 Pay special attention to:
-- newtype conventions (`struct NewType(OldType)` with `.0` access) — `language.md`
-- visibility defaults and opaque/public type choices — `language.md`
-- string safety rules (`String[i]` returns `UInt16`, may abort, and slicing can also abort) — `strings-data.md`
-- ASCII-vs-Unicode text handling patterns, `Char::to_ascii_lowercase` / `to_ascii_uppercase` — `strings-data.md`
+- newtype conventions (`struct NewType(OldType)` with `.0` access) — `types.md`
+- visibility defaults and opaque/public type choices — `types.md`
+- string safety rules (`String[i]` returns `UInt16`, may abort, and slicing can also abort) — `strings-regex.md`
+- ASCII-vs-Unicode text handling patterns, `Char::to_ascii_lowercase` / `to_ascii_uppercase` — `language.md` (primitives) / `strings-regex.md`
 
 ## Agent Workflow
 
@@ -288,4 +296,4 @@ my_module
 - **Search core before hand-rolling utilities** — case-insensitive compare is `equal_ignore_ascii_case`, substring scan is `String::contains_any`, clamping is `Int::clamp`, String↔Bytes is `moonbitlang/core/encoding/utf8`. If it feels like a common utility, look it up first (see API Lookup Rule).
 - **Don't assert performance conclusions without measuring** — no "this is faster/slower" claims without a benchmark or profile run; propose the measurement first (see `references/bench-profile.md`).
 
-For complete syntax details, see `references/language.md` (and its topic files `strings-data.md`, `errors.md`, `control-flow.md`, `traits-methods.md`). For `moon` tooling, see `references/toolchain.md` and `references/moon-ide.md`.
+For complete syntax details, see `references/language.md` (and its topic files `types.md`, `strings-regex.md`, `collections.md`, `bytes.md`, `errors.md`, `control-flow.md`, `traits-methods.md`). For `moon` tooling, see `references/toolchain.md` and `references/moon-ide.md`.

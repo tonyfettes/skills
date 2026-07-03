@@ -34,7 +34,10 @@ is covered in the sections below.
 - `moon add <package>` — add dependency
 - `moon remove <package>` — remove dependency
 - `moon fetch <package>[@<version>]` — download source into `.repos/` for offline reading without adding a dependency
-- `moon fmt` — format code (rewrites files)
+- `moon fmt` — format code (rewrites files); `moon fmt --check` verifies without rewriting (CI)
+- `moon check -w` / `moon build -w` — watch mode: re-run on file changes
+- `moon doc --serve` — build and serve HTML docs locally (`-p <port>`, default 3000)
+- `moon shell-completion --shell zsh` — print completion script (bash/zsh/fish/elvish/powershell)
 - `moon -C <dir> <subcommand>` — run in a specific directory
 
 `moon check --output-json` can be piped through `jq` or into
@@ -78,12 +81,16 @@ Then `git status` — include any files they produce in the commit.
   moon test float/float_test.mbt --filter "Float::*"
   moon test float -F "Float::*"          # shortcut
   ```
+- `moon test --build-only` — compile tests without running them
+- `moon test -l 4` — cap snapshot-update passes for `-u` (default 256); lower it when a non-converging `inspect` keeps rewriting itself
+- Doc tests run as part of plain `moon test`; the old `--doc` flag is deprecated (no-op)
+- `moon bench` — run `bench` blocks; select with `-p <pkg> -f <file> -i <index>`, plus `--build-only` and `--no-parallelize`. See `bench-profile.md`.
 - `moon coverage analyze` — coverage analysis. Common forms:
   ```
   moon coverage analyze -- -f summary                       # per-file %
   moon coverage analyze -- -f caret -F path/to/file.mbt     # caret marks under uncovered lines
   ```
-  Run `moon test` first to collect data, then drive missing branches via the public API. See `refactoring.md` for the full workflow.
+  Run `moon test` first to collect data, then drive missing branches via the public API. See `refactoring.md` for the full workflow, and `coverage.md` for report formats and CI upload.
 
 ## README.mbt.md generation
 
@@ -238,8 +245,10 @@ options(
 )
 ```
 
-Use `supported_targets = "native"` or another target-set expression at top
-level when the whole package only supports selected backends.
+Use `supported_targets = "<target-set>"` at top level when the whole package
+only supports selected backends: `"native"` (single), `"+js+wasm-gc"` (explicit
+set), `"+all-js"` (all except js). `moon.mod` accepts the same field; the
+effective set is the module∩package intersection.
 
 ```
 supported_targets = "native"
@@ -247,6 +256,20 @@ options(
   "is-main": true,
 )
 ```
+
+Command behavior: `moon check/build/test/bench` keep only packages supporting
+the selected target; `moon info` skips unsupported packages with a warning; if
+a *required dependency* doesn't support the target, the command fails with a
+dependency-path error. Omitting the field means all backends. For
+backend-specific **main** packages, `supported_targets` must accompany
+file-level `targets` — see the pitfall in "Conditional compilation".
+
+Other `options(...)` fields (note: object keys inside `{ }` must be quoted
+strings in the DSL — unquoted keys are a parse error):
+
+- `formatter: { "ignore": ["generated.mbt"] }` — files `moon fmt` skips (pre-build outputs are skipped automatically)
+- `"max-concurrent-tests": 2` — cap parallel tests in this package (shared ports/temp files)
+- `"test-import-all": true` — import all public defs into black-box tests (deprecated; prefer `fnalias`)
 
 Legacy `moon.pkg.json`:
 ```json
@@ -265,6 +288,22 @@ Legacy `moon.pkg.json`:
 ```
 
 Packages are per directory. Directories without a `moon.pkg` / `moon.pkg.json` are not recognized as packages.
+
+#### Virtual packages
+
+A virtual package is an interface (declared in a `pkg.mbti` file) whose
+implementation downstream users can swap — e.g. replacing
+`moonbitlang/core/abort` behavior:
+
+```
+// interface package: options("virtual": { "has-default": true })
+//   — quote "virtual" (reserved word); has-default means it ships a fallback impl
+// implementing package: options(implement: "moonbitlang/core/abort")
+// consumer (main) package: options(overrides: [ "moonbitlang/dummy_abort/abort_show_msg" ])
+```
+
+Consumers that don't list an override get the default implementation (if
+`has-default` is true).
 
 ### Package importing & aliases
 
@@ -323,6 +362,9 @@ The `moonbitlang/core` module is always available without adding it to
 imports for package aliases such as `@utf8`, `@json`, or `@strconv`; add imports
 like `"moonbitlang/core/encoding/utf8"` when the compiler reports a missing or
 implicit core package.
+
+The stdlib includes `@argparse` (`import { "moonbitlang/core/argparse" }`) —
+the first choice for CLI argument parsing; no external dependency needed.
 
 ### Creating packages
 
@@ -389,6 +431,24 @@ Available conditions:
 - **Build modes**: `"debug"`, `"release"`
 - **Logical operators**: `"and"`, `"or"`, `"not"`
 
+**Backend-specific main packages need BOTH mechanisms.** File-level `targets`
+controls which backends a *file* compiles on; package-level `supported_targets`
+(see the `moon.pkg` section) controls which backends the *package* exists on.
+A wasm-only executable with only `targets: { "main.mbt": ["wasm"] }` fails
+`moon check --target native` with E4067 "Missing main function in the main
+package" — main.mbt is skipped but the package is still `is-main`. Add
+`supported_targets = "wasm"` so root-level checks skip the whole package
+(explicitly checking that package path with `--target native` then errors with
+"does not support target backend", which is the expected semantics).
+
+### Single-module fullstack layout
+
+One module can host `frontend/` (`supported_targets = "js"`), `backend/`
+(`supported_targets = "native"`), and `shared/` (target-agnostic) packages —
+per-package `supported_targets` lets each command build only the packages that
+match its `--target`, while `shared/` compiles everywhere. Verify the whole
+matrix with `moon check --deny-warn --target all` and `moon test --target all`.
+
 ## Link configuration
 
 In modern `moon.pkg` DSL, use a top-level `link(...)` block. The native form is
@@ -404,9 +464,9 @@ link(
 ```
 
 For the full per-backend option set (wasm/js exports, memory options, output
-format), the legacy JSON keys below are the reference; when writing them in
-`moon.pkg` DSL, verify the spelling with `moon check` before committing rather
-than guessing.
+format), the legacy JSON keys below are the reference. The same keys work in
+`moon.pkg` DSL as quoted strings inside `options(link: { "wasm": { ... } })`
+(verified) — object keys must be quoted.
 
 Legacy `moon.pkg.json`:
 
@@ -422,6 +482,11 @@ Legacy `moon.pkg.json`:
         "module": "env",
         "name": "memory"
       },
+      "memory-limits": {                 // linear memory min/max (pages)
+        "min": 1,
+        "max": 65536
+      },
+      "shared-memory": true,             // enable shared linear memory
       "export-memory-name": "memory"
     },
     "wasm-gc": {
@@ -451,7 +516,13 @@ field. It is translated by the toolchain to the legacy `warn-list` key.
 warnings = "+unnecessary_annotation"  // enable warning 73
 warnings = "+73"                      // equivalent
 warnings = "-2-29"                    // disable unused variable and unused package
+warnings = "@deprecated"              // promote a warning to a fatal error
+warnings = "@alert-alert_unsafe"      // all alerts fatal, except category `unsafe` disabled
 ```
+
+Prefixes: `-` disable, `+` enable, `@` enable and treat as error. Alerts
+(warning 14) fire on APIs marked `#internal(<category>, ...)`; control one
+category with `alert_<category>` or all at once with `alert`.
 
 Use the same values on the command line with `--warn-list`:
 
@@ -477,25 +548,31 @@ Common warning numbers:
 - `29` — unused package
 - `73` / `unnecessary_annotation` — redundant annotations and over-qualified constructors
 
-Run `moonc build-package -warn-help` to see all available warnings.
+Run `moonc check -warn-help` to see all available warnings (mnemonic, id, and
+default state).
 
-## Pre-build commands
+## Pre-build commands (`rule` / `dev_build`)
 
-Embed external files as MoonBit code. (Shown in legacy `moon.pkg.json` form —
-if the package uses the `moon.pkg` DSL, verify the current `pre-build` DSL
-spelling with `moon check` rather than guessing.)
+Generate files before `moon check` / `moon build` / `moon test` — e.g. embed
+external data as MoonBit code. In `moon.pkg` DSL:
 
-```json
-{
-  "pre-build": [
-    {
-      "input": "data.txt",
-      "output": "embedded.mbt",
-      "command": ":embed -i $input -o $output --name data --text"
-    }
-  ]
-}
 ```
+rule(name: "embed", command: ":embed -i $input -o $output --name data --text")
+dev_build(rule: "embed", input: "data.txt", output: "embedded.mbt")
+```
+
+- `rule(name:, command:)` declares a reusable command template; `$input` /
+  `$output` are filled in by the `dev_build(rule:, input:, output:)` that uses
+  it. Both may appear multiple times per file.
+- `rule` can also live in `moon.mod` (module-level, visible to every package);
+  lookup checks the package's own `moon.pkg` first, then `moon.mod`.
+- Safety: pre-build does NOT run when the package is consumed as a dependency —
+  commit the generated outputs so downstream builds work.
+- Generated outputs are skipped by `moon fmt` automatically.
+
+Legacy `moon.pkg.json` uses
+`"pre-build": [{ "input": "data.txt", "output": "embedded.mbt", "command": "..." }]`
+(`rule`/`dev_build` are DSL-only).
 
 Generated code example:
 
@@ -510,3 +587,6 @@ let data : String =
 ## More
 
 - `moon-ide.md` — `moon ide` subcommand deep reference (goto-definition, find-references, tags, query syntax)
+- `coverage.md` — coverage workflow (`--enable-coverage`, report formats, CI upload)
+- `publishing.md` — publishing to mooncakes.io and advanced dependency tooling
+- `wasm-component.md` — Wasm Component Model (WIT, wit-bindgen, wasm-tools, wasmtime)

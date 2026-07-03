@@ -2,48 +2,7 @@
 
 Patterns for evolving MoonBit code without breaking callers. All assume you've already read the SKILL.md "Refactor (Behavior Preserving)" playbook and use `moon ide rename` / `find-references` / `outline` for navigation (see `moon-ide.md`).
 
-## Migration shims for renaming and moving APIs
-
-### Free function ↔ method: `#as_free_fn`
-
-When you want to convert a free function `foo(x)` into a method `Bar::foo(self)`, place `#as_free_fn(foo, deprecated="Use Bar::foo")` on the new method. The compiler emits a deprecated free function `foo` that forwards to the method. Old callers keep working with a warning; you migrate them one at a time guided by the warnings.
-
-```mbt nocheck
-#as_free_fn(reader_next, deprecated="Use Reader::next instead")
-fn Reader::next(self : Reader) -> Char? { ... }
-// Old: reader_next(r)         — still compiles, emits deprecation warning
-// New: r.next()
-```
-
-The reverse direction — exposing a method as a free function intentionally — uses the same attribute without `deprecated`:
-
-```mbt nocheck
-#as_free_fn(m)                            // public method exposed as `m()`
-#as_free_fn(n, visibility="pub")          // also pick a visibility
-fn List::f() -> Bool { true }
-```
-
-### Renaming an existing API: `#alias`
-
-`#alias(old_name, deprecated)` adds an alternate (deprecated) name for an existing function. Use it when **renaming**, not when changing function-vs-method shape:
-
-```mbt nocheck
-#alias(compute_sum, deprecated="Use calculate_sum")
-pub fn calculate_sum(a : Int, b : Int) -> Int { a + b }
-```
-
-Strip the alias once `find-references compute_sum` returns nothing.
-
-### `#deprecated` for shape-preserving deprecation
-
-If you don't need a forwarding shim — just want to discourage callers — `#deprecated("message")` annotates an existing item:
-
-```mbt nocheck
-#deprecated("Will be removed in 0.5; use BarV2")
-pub fn old_api() -> Unit { ... }
-```
-
-Add `skip_current_package=true` when intra-package callers are intentional and don't need warnings.
+For migration shims when renaming/moving/deprecating public APIs (`#alias`, `#as_free_fn`, `#deprecated`, `#label_migration`, `#visibility`, `#alert`), see `api-evolution.md`.
 
 ## Splitting a package
 
@@ -76,6 +35,7 @@ Code under `<pkg>/internal/...` is only importable from `<pkg>` and its descenda
 
 Do not move a **public concrete type** into `internal/*` and recover it with `pub using` from a facade — external users don't get implicit method-owner loading for internal packages, so `x.method()` can fail on the re-exported type. Public types belong in the package users name or a non-internal public package it re-exports; see "Type ownership" in `toolchain.md`.
 
+
 ## Coverage-driven gap filling
 
 `moon coverage analyze` is what you reach for **after** `moon test` is green and you want to know which branches are still untested.
@@ -90,6 +50,9 @@ Workflow:
 2. `moon coverage analyze -- -f summary` to find the lowest-coverage file.
 3. `moon coverage analyze -- -f caret -F <file>` to see which lines/branches.
 4. Add a black-box test through the public API that drives the missing branch. Avoid making something `pub` just to test it — that's an API regression dressed as test work.
+
+
+To exclude a function from coverage stats, use `#coverage.skip` — see `coverage.md` (deprecated functions are excluded automatically).
 
 ## Style refactors that pay for themselves
 
@@ -164,12 +127,12 @@ for i = 0 {
 // After (functional state in the loop header)
 for _ in 0..<n; a = 1, b = 2 {
   continue b, a + b
-} else {
+} nobreak {
   a
 }
 ```
 
-Once the state lives in the loop header, you can attach a `where { invariant: ..., reasoning: ... }` block when the algorithm warrants it (see `control-flow.md` "Loop invariants").
+Once the state lives in the loop header, you can attach a `where { proof_invariant: ..., proof_reasoning: ... }` block when the algorithm warrants it (see `control-flow.md` "Loop invariants").
 
 ## When to stop
 
