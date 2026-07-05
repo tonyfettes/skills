@@ -29,6 +29,36 @@ Claude auth: fresh `CLAUDE_CONFIG_DIR` per trial has no login. Either
 `--claude-config-seed ~/.claude-eval-seed`.
 Codex auth: `~/.codex/auth.json` is copied into each trial's `CODEX_HOME`.
 
+## Subagent mode (claude arm without CLI auth)
+
+Alternative claude arm that runs inside an interactive Claude Code session
+(no headless login needed): the session orchestrates one **subagent per
+trial** (Agent tool, `model: sonnet`) instead of spawning `claude -p`.
+
+```sh
+./prep-subagent-run.sh sub-ab1 3        # sandboxes + per-trial prompt.txt
+# ... session spawns one subagent per <trial>/prompt.txt, waits for all ...
+python3 grade-run.py /tmp/moonbit-skill-evals/sub-ab1
+```
+
+Differences from the CLI arm — **label these rows `claude-sub` and don't pool
+them with `claude` CLI rows**:
+
+- **Isolation is instruction-based, not environment-based.** Subagents share
+  the session's process, so the session's skills are technically reachable;
+  both variants are told "do NOT use the Skill tool", and the treatment gets
+  the skill as plain files at `./moonbit-docs/` referenced from the prompt.
+  If a control agent disobeys, the bias *shrinks* the measured delta
+  (conservative direction), but it's still a weaker guarantee than the CLI
+  arm's fake-HOME isolation.
+- **This arm measures skill content, not trigger machinery** — the treatment
+  prompt explicitly points at the docs, so description-based autotriggering
+  is not exercised (the codex/claude CLI arms cover that).
+- Per-trial metrics come from the subagent's final-message self-report
+  (`done` / `consulted_docs` / `moon_failures_seen`), which is noisier than
+  transcript parsing; the orchestrator saves it as `<trial>/report.json` so
+  grade-run.py picks it up.
+
 ## Isolation (all verified empirically)
 
 - Sandboxes live outside the repo (`--scratch`, default `/tmp/moonbit-skill-evals`),
