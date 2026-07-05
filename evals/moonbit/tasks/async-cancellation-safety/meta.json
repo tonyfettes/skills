@@ -1,0 +1,8 @@
+{
+  "id": "async-cancellation-safety",
+  "tier": 1,
+  "tests_point": "must-complete async cleanup needs @async.protect_from_cancel (cancellation kills async ops inside defer/catch cleanup at the next suspension point)",
+  "skill_refs": ["references/async.md#cancellation-safe-cleanup"],
+  "naive_failure": "defer { conn.send(\"END\") } — the async send suspends during cancellation and is itself cancelled, so END never reaches the connection; the cancellation conformance test fails",
+  "verify": ["conformance moon test --target native (pure behavioral, incl. with_timeout cancellation)", "conn.mbt restored before grading (anti-cheat)"]
+}

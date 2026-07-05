@@ -1,0 +1,8 @@
+{
+  "id": "utf8-encode-decode",
+  "tier": 1,
+  "tests_point": "String<->Bytes conversion must use moonbitlang/core/encoding/utf8; String::to_bytes() is UTF-16LE and hand-rolled loops break on multibyte",
+  "skill_refs": ["references/strings-regex.md", "SKILL.md#search-core-before-hand-rolling"],
+  "naive_failure": "String::to_bytes() produces UTF-16LE so exact-bytes assertions fail; hand-rolled encoders break on astral-plane emoji",
+  "verify": ["conformance moon test", "grep encoding/utf8 import"]
+}

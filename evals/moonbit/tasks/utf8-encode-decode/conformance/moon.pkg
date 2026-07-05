@@ -1,0 +1,4 @@
+import {
+  "eval/wirecodec/wire",
+  "moonbitlang/core/debug",
+} for "test"

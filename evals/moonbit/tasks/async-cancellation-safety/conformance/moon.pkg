@@ -1,0 +1,5 @@
+import {
+  "eval/cancelsafe/session",
+  "moonbitlang/async",
+  "moonbitlang/core/debug",
+} for "test"

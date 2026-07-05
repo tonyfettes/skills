@@ -1,0 +1,5 @@
+import {
+  "eval/blobstore/store",
+  "moonbitlang/async",
+  "moonbitlang/core/debug",
+} for "test"

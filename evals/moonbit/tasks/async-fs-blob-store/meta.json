@@ -1,0 +1,8 @@
+{
+  "id": "async-fs-blob-store",
+  "tier": 1,
+  "tests_point": "fs IO in async programs must use moonbitlang/async/fs, not moonbitlang/x/fs (sync, blocks the event loop)",
+  "skill_refs": ["references/async.md"],
+  "naive_failure": "agents trained on older MoonBit reach for moonbitlang/x/fs; it compiles and may even pass behavior tests, so the discriminator is the import check",
+  "verify": ["conformance moon test --target native", "grep: no x/fs, requires async/fs import"]
+}

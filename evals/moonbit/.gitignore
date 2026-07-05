@@ -1,0 +1,3 @@
+results/
+tasks/*/template/_build/
+tasks/*/template/.mooncakes/
