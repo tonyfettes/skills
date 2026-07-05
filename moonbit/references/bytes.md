@@ -7,6 +7,13 @@ FFI buffers are in `ffi/c.md` / `ffi/js-wasm.md`.
 
 ## Bytes (immutable)
 
+Native-runtime/FFI invariant: `Bytes` allocations include a trailing zero byte
+sentinel that is not counted by `length()` and is not part of pattern matching
+or iteration. This makes a UTF-8 `Bytes` value usable as a C `const char *`
+without manually appending `\0`; interior zero bytes still terminate C string
+APIs, so pass length-aware buffers for binary data. See `ffi/c.md` before
+editing C FFI bindings or stubs.
+
 ```mbt check
 ///|
 test "bytes literals and indexing" {
@@ -81,4 +88,3 @@ test "bitstring patterns" {
 Result type depends on width: 1..32 bits → `Int`/`UInt`; 33..64 bits → `Int64`/`UInt64`.
 
 ---
-

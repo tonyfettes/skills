@@ -8,6 +8,11 @@ primitives in `language.md`.
 
 ## String (immutable UTF-16)
 
+Native-runtime/FFI invariant: `String` allocations include a trailing UTF-16
+zero code unit that is not counted by `length()`. C `const char *` APIs should
+receive `Bytes`, not `String`; encode with `moonbitlang/core/encoding/utf8`,
+and the resulting `Bytes` already has its own trailing zero byte sentinel.
+
 `s[i]` returns a **code unit (UInt16)** — NOT a Char. Use `s.get_char(i)` for `Char?`.
 
 ```mbt check
