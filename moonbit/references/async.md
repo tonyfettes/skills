@@ -123,6 +123,20 @@ production review:
 
 (`defer` semantics and syntax: `control-flow.md`.)
 
+## Spawning subprocesses (`@process`)
+
+Default to `@process.run(...)` (runs to completion) or
+`@process.spawn(group, ...)` (returns a `Process` bound to a task group — the
+group waits on / reaps / can cancel it). These keep the child's lifetime tied to
+a scope you control.
+
+**Never reach for `@process.spawn_orphan` on your own.** It detaches the child
+from every task group: the parent does not wait or reap it, and it outlives the
+scope — exactly the "orphaned child keeps running after the host exits" failure
+mode. Use it only when the user has **explicitly asked for or confirmed** a
+detached/daemon process; otherwise use `spawn` with a task group so shutdown and
+cancellation stay well-defined.
+
 ## Pipeline backpressure and shutdown
 
 Between reader/writer tasks use **bounded** queues — an `Unbounded` inbound

@@ -43,16 +43,19 @@ license = "Apache-2.0"
 keywords = []
 description = "..."
 preferred_target = "native"   # optional: default backend when none is specified
+source = "src"                # optional: default is "."
 
 import {
   "moonbitlang/x@0.4.6",
 }
 
 options(
-  // source: "src", // Optional; default is "."
   "preferred-target": "native",
 )
 ```
+
+`source` is a top-level `moon.mod` field. Current `moon fmt` normalizes
+`source` out of `options(...)` and rewrites it as `source = "src"`.
 
 Use `moon add moonbitlang/x@0.4.6` and `moon remove moonbitlang/x` to manage the
 `import` block instead of editing dependency versions by hand. For FFI/native
