@@ -25,8 +25,14 @@ moon test --target native -p eval/labelffi/conformance >/dev/null 2>&1 \
 # anti-pattern under test).
 grep -rq 'encoding/utf8' label/moon.pkg* 2>/dev/null \
   || fail "label package does not import moonbitlang/core/encoding/utf8"
-if grep -q '\\x00' label/*.mbt; then
-  fail "manually appends NUL bytes (runtime Bytes already carry a trailing NUL)"
-fi
+# (implementation files only — binary fixtures in the agent's own tests are fine)
+for f in label/*.mbt; do
+  case "$f" in
+    *_test.mbt | *_wbtest.mbt) continue ;;
+  esac
+  if grep -q '\\x00' "$f"; then
+    fail "manually appends NUL bytes in $f (runtime Bytes already carry a trailing NUL)"
+  fi
+done
 
 echo "VERIFY_PASS"

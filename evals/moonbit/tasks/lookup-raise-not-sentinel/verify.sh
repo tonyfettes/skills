@@ -27,6 +27,6 @@ grep -E 'port_of' "$MBTI" | grep -q 'raise' \
 if grep -E 'port_of' "$MBTI" | grep -qE 'Int\?|Result\['; then
   fail "port_of returns Option/Result instead of raising"
 fi
-grep -q 'try?' registry/*.mbt && fail "uses deprecated try?"
+grep -qE '(^|[^A-Za-z0-9_])try\?' registry/*.mbt && fail "uses deprecated try?"
 
 echo "VERIFY_PASS"

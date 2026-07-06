@@ -27,6 +27,6 @@ grep -q 'Result\[' "$MBTI" \
   && fail "public interface threads Result (use raise)"
 grep -q 'suberror' "$MBTI" \
   || fail "no public suberror — failure categories are not distinguishable"
-grep -q 'try?' cfg/*.mbt && fail "uses deprecated try?"
+grep -qE '(^|[^A-Za-z0-9_])try\?' cfg/*.mbt && fail "uses deprecated try?"
 
 echo "VERIFY_PASS"
