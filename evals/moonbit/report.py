@@ -32,7 +32,9 @@ def main(path):
         p = sum(1 for r in g if r["pass"])
         lo, hi = wilson(p, n)
         loaded = sum(1 for r in g if r.get("skill_loaded"))
-        err = sum(r.get("compile_errors_seen", 0) for r in g) / n
+        err = sum(r.get("compile_errors_seen",
+                        (r.get("self_report") or {}).get("moon_failures_seen", 0))
+                  for r in g) / n
         dur = sum(r.get("duration_s", 0) for r in g) / n
         print(f"{key[0]:<28} {key[1]:<7} {key[2]:<8} {p:>4}/{n:<4} "
               f"[{lo:.2f},{hi:.2f}] {loaded:>5}/{n:<2} {err:>8.1f} {dur:>7.0f}")
