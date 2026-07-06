@@ -1,0 +1,8 @@
+{
+  "id": "cstring-ffi-nul",
+  "tier": 1,
+  "tests_point": "MoonBit Bytes carry a runtime trailing NUL (pass directly as const char*); String->Bytes at FFI boundaries goes through encoding/utf8; interior zeros need length-aware C APIs",
+  "skill_refs": ["references/bytes.md", "references/strings-regex.md", "references/ffi/c.md#string-conversion-across-ffi"],
+  "naive_failure": "String::to_bytes() (UTF-16LE: strlen counts until the first zero byte — 'hi' measures 1, not 2); manual NUL append; hand-rolled byte loop conversions",
+  "verify": ["conformance moon test --target native (CJK/emoji byte lengths via C strlen; interior-zero sums)", "label.c restored before grading", "grep: encoding/utf8 imported, no \\x00 literals in .mbt"]
+}

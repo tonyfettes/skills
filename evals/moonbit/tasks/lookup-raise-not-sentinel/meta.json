@@ -1,0 +1,8 @@
+{
+  "id": "lookup-raise-not-sentinel",
+  "tier": 1,
+  "tests_point": "expected failures use raise + suberror carrying context, never sentinel values (-1/0/defaults)",
+  "skill_refs": ["references/errors.md"],
+  "naive_failure": "return -1/0 for missing service, or Option/Result-shaped signature; empty error without the service name",
+  "verify": ["conformance moon test (missing name must raise, error message must contain the name)", ".mbti: port_of raises, not Int?/Result", "grep: no try?"]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "config-chain-raise",
+  "tier": 1,
+  "tests_point": "multi-layer error propagation uses raise + suberror categories, not Result[T,E] threading (Rust/Go habit)",
+  "skill_refs": ["references/errors.md"],
+  "naive_failure": "fn parse -> Result[Config, String] with match/unwrap at each layer, or one stringly-typed error losing the syntax/validation distinction",
+  "verify": ["conformance moon test (9 failure inputs must raise)", ".mbti: load_config raises, no Result[, has public suberror", "grep: no try?"]
+}

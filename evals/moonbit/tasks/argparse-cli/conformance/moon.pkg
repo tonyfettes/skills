@@ -1,0 +1,4 @@
+import {
+  "eval/mgrep/cli",
+  "moonbitlang/core/debug",
+} for "test"

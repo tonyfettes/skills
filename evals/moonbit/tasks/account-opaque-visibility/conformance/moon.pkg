@@ -1,0 +1,4 @@
+import {
+  "eval/ledger/account",
+  "moonbitlang/core/debug",
+} for "test"

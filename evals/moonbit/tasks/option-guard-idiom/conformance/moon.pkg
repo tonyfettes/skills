@@ -1,0 +1,4 @@
+import {
+  "eval/jobqueue/queue",
+  "moonbitlang/core/debug",
+} for "test"

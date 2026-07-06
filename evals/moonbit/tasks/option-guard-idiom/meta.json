@@ -1,0 +1,8 @@
+{
+  "id": "option-guard-idiom",
+  "tier": 1,
+  "tests_point": "Option handling uses guard .. is Some(..) else { .. } / if .. is Some(..) (match is reserved for real enums; bare guard without else panics)",
+  "skill_refs": ["references/language.md#option-idioms", "references/control-flow.md"],
+  "naive_failure": "match x { Some(v) => ..., None => ... } on Option in early-exit-shaped functions",
+  "verify": ["conformance moon test", "grep: no `match` keyword and no `None =>` arm in queue.mbt"]
+}

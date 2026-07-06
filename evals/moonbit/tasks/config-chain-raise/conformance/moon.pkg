@@ -1,0 +1,4 @@
+import {
+  "eval/cfgload/cfg",
+  "moonbitlang/core/debug",
+} for "test"

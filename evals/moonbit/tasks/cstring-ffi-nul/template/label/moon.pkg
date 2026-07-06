@@ -1,0 +1,4 @@
+supported_targets = "native"
+options(
+  "native-stub": ["label.c"],
+)

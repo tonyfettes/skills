@@ -1,0 +1,4 @@
+import {
+  "eval/svcreg/registry",
+  "moonbitlang/core/debug",
+} for "test"

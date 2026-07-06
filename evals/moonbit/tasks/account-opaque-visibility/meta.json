@@ -1,0 +1,8 @@
+{
+  "id": "account-opaque-visibility",
+  "tier": 1,
+  "tests_point": "invariant-carrying types default to abstract visibility (plain `struct`, renders as `type X` in .mbti); pub(all)/pub struct with a mut field lets dependents break the invariant",
+  "skill_refs": ["references/types.md#access-control", "references/types.md#visibility-design-heuristics"],
+  "naive_failure": "pub(all) struct Account { mut balance : Int } — compiles, passes all behavioral tests, and silently gives every dependent package write access to balance",
+  "verify": ["conformance moon test", ".mbti: `type Account` present, `struct Account` absent"]
+}

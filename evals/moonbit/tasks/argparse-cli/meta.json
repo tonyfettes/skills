@@ -1,0 +1,8 @@
+{
+  "id": "argparse-cli",
+  "tier": 1,
+  "tests_point": "CLI argument parsing uses stdlib moonbitlang/core/argparse (declarative Command/FlagArg/OptionArg/PositionArg), not a hand-rolled argv loop",
+  "skill_refs": ["references/project-config.md#standard-library-moonbitlangcore"],
+  "naive_failure": "hand-rolled for-loop over argv with manual flag matching; usually misses at least one of: unknown-flag rejection, missing-value rejection, zero-positional rejection",
+  "verify": ["conformance moon test (12 argv cases incl. 4 invalid)", "grep: cli/moon.pkg imports core/argparse"]
+}
