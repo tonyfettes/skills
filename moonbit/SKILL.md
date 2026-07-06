@@ -23,6 +23,7 @@ Load the reference matching your current work BEFORE writing code:
 | Methods, traits, trait objects (`&Trait`), trait/impl visibility, dot-resolution rules, operator overloading, indexing operators (`#alias`) | `references/traits-methods.md` |
 | Configuring `derive(...)` — JSON enum styles, rename rules, container/case/field args | `references/derive.md` |
 | Running `moon` commands (check / build / test / fmt / info / run) | `references/toolchain.md` |
+| CLI programs — argument parsing (stdlib `@argparse`: `Command`/`FlagArg`/`OptionArg`/`PositionArg`; never hand-roll an argv loop), argv/env via `@env` | `references/cli.md` |
 | Project/package layout, imports, `moon.mod`, `moon.pkg` config, dependencies, `using` re-exports | `references/project-config.md` |
 | Multi-module workspaces (`moon.work`, `moon work init/use/sync`) | `references/project-config.md` |
 | Designing visibility and public API shape (`pub`, opaque types, `.mbti` review) | `references/types.md` + `references/project-config.md` |
@@ -262,7 +263,7 @@ my_module
 - **Postfix `catch` can't be a bare scrutinee** — `match f() catch { ... } { ... }` is a parse error; wrap in parentheses or bind with `let` first.
 - **Don't use deprecated `Json` accessors** (`.value(key)`, `.as_string()`, ...) — pattern-match instead: `if json is Object(obj) { obj.get(key) }`, `if json is String(s) { ... }`.
 - **`#valtype` has hard limits** (currently ≤6 fields, no `mut` fields, no abstract-type fields, no nested value types — limits may be relaxed in future compiler releases) — check `references/valtype.md` before annotating.
-- **Search core before hand-rolling utilities** — case-insensitive compare is `equal_ignore_ascii_case`, substring scan is `String::contains_any`, clamping is `Int::clamp`, String↔Bytes is `moonbitlang/core/encoding/utf8`. If it feels like a common utility, look it up first (see API Lookup Rule).
+- **Search core before hand-rolling utilities** — case-insensitive compare is `equal_ignore_ascii_case`, substring scan is `String::contains_any`, clamping is `Int::clamp`, String↔Bytes is `moonbitlang/core/encoding/utf8`, CLI parsing is `@argparse` (stdlib — see `references/cli.md`; never hand-roll an argv loop). If it feels like a common utility, look it up first (see API Lookup Rule).
 - **Don't assert performance conclusions without measuring** — no "this is faster/slower" claims without a benchmark or profile run; propose the measurement first (see `references/optimization.md`).
 
 For complete syntax details, see `references/language.md` (and its topic files `types.md`, `strings-regex.md`, `collections.md`, `bytes.md`, `errors.md`, `control-flow.md`, `traits-methods.md`). For `moon` tooling, see `references/toolchain.md` (commands), `references/project-config.md` (module/package config), and `references/moon-ide.md`.

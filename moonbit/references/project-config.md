@@ -239,7 +239,8 @@ like `"moonbitlang/core/encoding/utf8"` when the compiler reports a missing or
 implicit core package.
 
 The stdlib includes `@argparse` (`import { "moonbitlang/core/argparse" }`) —
-the first choice for CLI argument parsing; no external dependency needed.
+the first choice for CLI argument parsing; never hand-roll an argv loop. API
+guide and examples: `references/cli.md`.
 
 ## Creating packages
 
