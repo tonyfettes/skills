@@ -108,8 +108,9 @@ def setup_codex(trial_dir, work, variant, args):
 
 def transcript_metrics(text):
     return {
-        # any read/mention of the injected skill files
-        "skill_loaded": bool(re.search(r"skills/moonbit|SKILL\.md|references/", text)),
+        # any read/mention of the injected skill files (paths only — a bare
+        # "references/" also appears in vendored dep paths and false-fires)
+        "skill_loaded": bool(re.search(r"skills/moonbit|moonbit-docs|SKILL\.md", text)),
         # compiler diagnostic rounds observed in tool output
         "compile_errors_seen": len(re.findall(r"Error: \[", text)),
         "deprecation_warnings_seen": len(re.findall(r"Warning: \[0020\]|Warning: \[0027\]", text)),
