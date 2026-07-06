@@ -24,3 +24,18 @@ async test "cancellation via with_timeout still sends END" {
   assert_true(r is None) // the session did time out
   @debug.assert_eq(conn.sent(), ["BEGIN", "END"])
 }
+
+///|
+async test "cancellation error must propagate, not be swallowed" {
+  // If with_session swallows the cancellation error (returns normally while
+  // being cancelled), execution continues past it inside the cancelled task.
+  let conn = @session.Conn::make()
+  let mut escaped = false
+  let r = @async.with_timeout_opt(30, () => {
+    @session.with_session(conn, () => @async.sleep(100_000))
+    escaped = true // must never run: the cancellation must re-raise
+  })
+  assert_true(r is None)
+  assert_true(!escaped)
+  @debug.assert_eq(conn.sent(), ["BEGIN", "END"])
+}
