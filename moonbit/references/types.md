@@ -319,6 +319,67 @@ enum Status {
 ---
 
 
+## Modeling absence: `Option`, not sentinels
+
+A value that may be missing is a `T?`. Do not invent an in-band sentinel
+(`""`, `-1`, `0`, an empty array) to mean "absent" or "failed" — the type
+system stops tracking it, `Some("")` and `None` collapse into one value, and
+every consumer must remember the convention.
+
+Litmus test: **if any downstream code branches on `== ""` / `.is_empty()` /
+`== -1` to decide "present or not", the type should have been `T?`** (or the
+producer should have raised).
+
+```mbt
+// BAD: failure and absence collapse into "" — the caller cannot tell
+// "command failed" from "output was empty", and the error is swallowed.
+async fn git_output(dir : String, args : Array[String]) -> String {
+  let (code, stdout, _) = @process.collect_output("git", args, cwd=dir) catch {
+    _ => return ""
+  }
+  guard code == 0 else { return "" }
+  stdout.text().trim().to_owned()
+}
+
+// GOOD: absence is in the type; callers decide what a missing value means.
+async fn git_output(dir : String, args : Array[String]) -> String? {
+  let (code, stdout, _) = @process.collect_output("git", args, cwd=dir)
+  guard code == 0 else { return None }
+  Some(stdout.text().trim().to_owned())
+}
+```
+
+The recurring shapes, with fixes:
+
+- **Return values**: a lookup or computation that can come up empty returns
+  `T?`; an operation whose failure carries information raises a typed
+  `suberror` (see `references/errors.md`). Never `return ""` on a failure
+  path.
+- **Struct fields**: a field that starts unset, or is optional in the data it
+  models, is `String?` — not `String` initialized to `""`. Same for `-1` ids
+  and empty-array placeholders meaning "not loaded yet".
+- **Parameters**: an optional argument whose absence matters downstream is
+  `arg? : T?` (forward it with `arg?`), not `arg? : String = ""` re-detected
+  with `== ""` later.
+- **Decoding JSON/protocol input**: a missing required field is a decode
+  error — raise it. A missing optional field stays `None` and flows on as
+  `T?`. Defaulting a required field with `.unwrap_or("")` silently converts
+  protocol violations into plausible-looking data.
+- **`unwrap_or("")` / `unwrap_or(-1)`** are legitimate only at the last step
+  before display or serialization, where the default genuinely renders as
+  "nothing". Mid-pipeline flattening that a later check has to undo is the
+  bug.
+- **`catch { _ => "" }`** swallows the error AND corrupts the domain — handle
+  the error or let it propagate (see `references/errors.md`).
+
+What this rule does NOT forbid: `""` as a genuine domain value (an empty
+document, a platform's empty executable suffix), and boundary validation that
+rejects empty input (`guard name.trim() != "" else { raise ... }`) — that is
+rejecting bad data, not encoding absence.
+
+---
+
+
 ## Pattern matching
 
 Match expressions return values. Extensive patterns on arrays, structs, strings.

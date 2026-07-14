@@ -271,6 +271,13 @@ readability checks across the touched file, not just the exact commented line:
   named locals or direct branches when values have separate meanings, especially
   in configuration and environment plumbing. Use tuples only when the grouped
   values are a cohesive domain result or an established local pattern.
+- Model absence in the type: a function that can come up empty returns `T?`
+  (or raises), a field that starts unset is `T?` — never an in-band sentinel
+  (`""`, `-1`, empty array) re-detected downstream with `== ""` /
+  `.is_empty()` checks. Flatten an `Option` with `unwrap_or` only at the
+  final display/serialization step. When editing near existing sentinel-style
+  code, do not imitate it — new code models absence in the type (see
+  "Modeling absence" in `references/types.md`).
 - When application code needs to catch and render an expected domain or CLI
   error, define and raise a specific `suberror` instead of using `fail` and
   parsing its `Failure` text. Reserve `fail` for assertions, impossible states,

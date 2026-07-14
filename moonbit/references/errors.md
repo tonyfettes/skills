@@ -11,6 +11,8 @@ MoonBit uses checked error-throwing, not unchecked exceptions. All errors are su
 
 Do not use the legacy `function_name!(...)` / `function_name(...)?` syntax for new code. (`try?`, which converts to `Result[_, _]`, is being deprecated — prefer `try ... catch ... noraise` instead.)
 
+Never collapse an error into a sentinel value: `catch { _ => "" }` (or `-1`, or an empty array) is as bad as `catch { _ => () }` — it both swallows the failure and injects a fake domain value that downstream code must re-detect with `== ""` checks. Handle the error, propagate it, or — when "no value" is a legitimate outcome — return `T?` so absence is in the type (see "Modeling absence" in `references/types.md`).
+
 ```mbt check
 ///|
 suberror ValueError {
