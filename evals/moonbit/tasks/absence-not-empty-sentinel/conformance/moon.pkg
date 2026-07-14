@@ -1,0 +1,4 @@
+import {
+  "eval/eventlog/events",
+  "moonbitlang/core/debug",
+} for "test"

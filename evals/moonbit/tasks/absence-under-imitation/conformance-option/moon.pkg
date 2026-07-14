@@ -1,0 +1,4 @@
+import {
+  "eval/envcfg/envcfg",
+  "moonbitlang/core/debug",
+} for "test"

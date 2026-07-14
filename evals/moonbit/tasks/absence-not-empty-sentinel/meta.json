@@ -1,0 +1,8 @@
+{
+  "id": "absence-not-empty-sentinel",
+  "tier": 1,
+  "tests_point": "an absent optional field is modeled in the type (String? / raise), never as an empty-string sentinel; empty-but-present values survive ingestion",
+  "skill_refs": ["SKILL.md#common-pitfalls", "references/types.md"],
+  "naive_failure": "trace : String filled via unwrap_or(\"\") — absent and empty traces collapse into one value; non-string trace silently becomes \"\"",
+  "verify": ["conformance moon test (absent vs empty-present trace must render differently; malformed input must raise)", "grep: no unwrap_or(\"\") in events/*.mbt"]
+}

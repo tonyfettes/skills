@@ -1,0 +1,4 @@
+import {
+  "eval/vcs/vcs",
+  "moonbitlang/core/debug",
+} for "test"

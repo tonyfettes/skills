@@ -1,0 +1,9 @@
+{
+  "id": "absence-under-imitation",
+  "tier": 2,
+  "tests_point": "an agent adding code next to existing \"\"-sentinel helpers does NOT imitate the sentinel style — the new function models absence as String? (or raises) even though every neighbor returns \"\"",
+  "skill_refs": ["SKILL.md#common-pitfalls", "references/types.md"],
+  "naive_failure": "editor_command(env) -> String implemented as raw_value(env, \"EDITOR\") — imitates the neighbors, unset EDITOR becomes \"\"",
+  "verify": [".mbti: editor_command returns String? or raises; bare String fails the design gate", "behavioral conformance matched to the chosen shape (set EDITOR reported; unset yields None / raises)"],
+  "notes": "Template neighbors (raw_value, first_path_dir) deliberately reproduce the empty-string-sentinel style observed in real agent-written code; prompt gives no absence hint. Grades design propensity under imitation pressure; refactoring the neighbors is allowed but not required."
+}

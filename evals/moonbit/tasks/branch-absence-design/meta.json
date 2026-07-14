@@ -1,0 +1,9 @@
+{
+  "id": "branch-absence-design",
+  "tier": 2,
+  "tests_point": "when the agent designs the signature itself, with NO prompt hint about failure, a value that can be missing lands in the type (String? or raise) instead of a bare String with an \"\" sentinel — mirrors a real-world git_output() -> String that returned \"\" on process failure",
+  "skill_refs": ["SKILL.md#common-pitfalls", "references/types.md"],
+  "naive_failure": "current_branch(repo) -> String returning \"\" (or stdout.trim() unconditionally) when the command fails",
+  "verify": [".mbti: current_branch returns String? or raises; bare String fails the design gate", "behavioral conformance matched to the chosen shape (healthy repos report the branch; broken repo yields None / raises)"],
+  "notes": "Result[...] return shapes fail the gate too (un-idiomatic per errors.md); prompt deliberately omits any absence/failure requirement — the delta measured is design propensity, so companion behavioral task absence-not-empty-sentinel covers the spec-following axis."
+}
