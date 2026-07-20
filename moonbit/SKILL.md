@@ -7,6 +7,25 @@ description: Authoritative MoonBit reference — syntax (newtype/struct/trait/ty
 
 Authoritative guide for writing, refactoring, testing, and binding MoonBit projects.
 
+## Toolchain version baseline
+
+This skill was written/validated against **MoonBit toolchain v0.10.4** (moonc
+v0.10.4, released 2026-07-13; skill last updated 2026-07-20).
+
+**Assume the toolchain is v0.10.4** and follow this skill's guidance as-is —
+do not preemptively run `moon version` or second-guess the references. Deviate
+only when you observe evidence of a different version: unrecognized syntax in
+existing code, a compiler error/warning contradicting this skill, or a flag or
+feature behaving differently than documented here. In that case:
+
+1. Run `moon version --all` to get the actual installed version.
+2. If it differs from v0.10.4, check the official release notes at
+   <https://www.moonbitlang.com/updates/> (fetch the page; each entry links a
+   per-release changelog) for what changed between v0.10.4 and the installed
+   version, and prefer the newer toolchain's behavior over this skill where
+   they conflict.
+3. Note the discrepancy to the user so the skill can be updated.
+
 ## Route to references by task
 
 Load the reference matching your current work BEFORE writing code:
