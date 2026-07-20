@@ -14,14 +14,14 @@ Each skill directory should contain:
 
 ## Creating Skills
 
-Use the `skill-creator` skill when creating or updating skills in this repository.
+Create or update skills by editing `SKILL.md` and `references/` files directly, following the structure above and the conventions already present in the skill being modified. The `skill-creator` skill can help scaffold new skills when available, but it is not required.
 
 ## Commit Convention
 
 ```
 <type>(<scope>): <description>
 
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 ```
 
 Types: feat, fix, refactor, test, docs, chore
