@@ -378,6 +378,14 @@ The `run-asan.mbtx` script lives under the skill's `scripts/` directory. See `c-
 
 11. **Reaching for runtime `dlopen`/`dlsym` to dodge link problems.** Loading symbols at runtime instead of `link.native` config is situational — legitimate for genuinely optional dependencies, wrong as a workaround for a toolchain limitation (e.g. tcc lacking `-framework` support in debug `moon test`). Before converting an existing link-config approach to `dlopen`, discuss with the user; prefer fixing or scoping the dev loop (e.g. release-mode tests) instead.
 
+12. **Disabling the bundled mimalloc (Linux allocator conflicts).** The toolchain (moonc ≥ v0.10.5) links mimalloc into every native executable via `$MOON_HOME/lib/libmoonbitrun.o`, which can crash libraries a MoonBit executable dlopens (observed with CEF: SIGSEGV inside glibc `malloc_usable_size`). That file contains only the allocator override — no MoonBit runtime symbols — so replacing it with an empty object cleanly restores libc malloc:
+
+    ```sh
+    cc -c -x c /dev/null -o "${MOON_HOME:-$HOME/.moon}/lib/libmoonbitrun.o"
+    ```
+
+    Re-apply after every toolchain install/update. moon does not track this file as a link input: delete previously built executables so they relink, then verify with `nm <exe> | grep -c mi_malloc` → 0. Windows variant: `c-asan.md`.
+
 ## See also
 
 - `c-ownership.md` — ownership semantics, `#owned`/`#borrow` rules, `moonbit_incref`/`decref` operations

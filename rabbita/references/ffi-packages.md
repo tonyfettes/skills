@@ -141,6 +141,39 @@ external state. The only DOM reads happen in `main` (which runs once)
 or inside `Cmd` closures and subscription callbacks (which are scheduled by
 the runtime, not called by update).
 
+## Rule: snapshot live DOM collections at the extern boundary
+
+An `extern "js"` that returns `element.children` / `element.childNodes` /
+`getElementsBy*` hands MoonBit a **live** collection even when the binding
+declares `Array[Element]` — rabbita's own `@dom.Element::get_children` does
+exactly this (`(self) => self.children`, `dom/element.mbt`). MoonBit's
+`for x in arr` compiles to length-capture + index access, so mutating the DOM
+inside the loop shifts the live collection under the index:
+
+```moonbit
+// BROKEN: each remove shrinks the live collection; past the halfway point
+// children[i] is undefined → "Node.removeChild: Argument 1 is not an object",
+// half the children survive, and every later re-render hits the same throw.
+for child in parent.get_children() {
+  parent.remove_child(child.as_node())
+}
+```
+
+Fix: snapshot in your own extern before mutating —
+
+```moonbit
+extern "js" fn children_snapshot(element : @dom.Element) -> Array[@dom.Element] =
+  #| (element) => Array.from(element.children)
+```
+
+A `firstChild`-drain loop is the other correct shape, but don't build it on
+`@dom.Node::get_first_child` — that binding is typed plain `Node` while the DOM
+returns `null` at the end, so it needs your own nullable extern too.
+
+Treat any binding that returns a DOM collection as suspect until you've
+confirmed it snapshots (`Array.from`, spread) rather than passing the live
+object through — and when writing your own, always snapshot.
+
 ## Closing the loop: commands emit messages back
 
 Commands run side effects, but they also feed results back into the update loop via the scheduler. `emit(msg)` produces a Cmd; `scheduler.add(cmd)` queues it. This is how async results become messages:
@@ -187,6 +220,7 @@ For every new FFI package:
 - [ ] Method wrappers (`fn FooHandle::method`) are **not** `pub`
 - [ ] Public API takes `Emit[Msg]` for event wiring; callers adapt with `emit.map`
 - [ ] JS promises awaited via the `moonbit-community/rabbita/js` `Promise`, never `moonbitlang/async/js_async`
+- [ ] Externs returning DOM collections snapshot with `Array.from(...)` — never hand back a live `HTMLCollection`/`NodeList` typed as `Array[T]`
 - [ ] DOM-bound widget lifecycle owned by a subscription (unload = dispose) rather than a user-callable `close` Cmd; keyed string-id registries only for non-DOM resources (websocket-style)
 
 This makes it **impossible** for update to call side effects directly — the only public API returns `Cmd`.

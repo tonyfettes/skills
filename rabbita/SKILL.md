@@ -37,7 +37,7 @@ Load the reference matching your current work BEFORE writing code:
 
 | Task | Read |
 |---|---|
-| Using built-in effect packages, or binding a new JS library (dummy constructors, private externs, Cmd-returning API, wiring JS events back into the update loop via `Emit`, command constructor reference, package checklist) | `references/ffi-packages.md` |
+| Using built-in effect packages, or binding a new JS library (dummy constructors, private externs, Cmd-returning API, wiring JS events back into the update loop via `Emit`, live DOM collection snapshotting, command constructor reference, package checklist) | `references/ffi-packages.md` |
 | Designing or refactoring `Model` types (immutable collections, state enums, spotting hidden state machines, what must never live in a model) | `references/model-design.md` |
 | Writing tests for update handlers (idempotence, dummy object trap, state transitions, test helpers) | `references/testing.md` |
 | Writing or debugging views (positional vdom diffing & focus loss, view totality, per-dispatch cost, `@html` element surface, void elements, auto-scroll, embedding foreign DOM widgets) | `references/view-rendering.md` |
@@ -101,6 +101,7 @@ Label every non-obvious `Msg` payload — `AgentProgress(run_id~ : Int, Event)`,
 | Mutable `Ref` flag inside a sub loader / FFI closure to mute or filter events | Track connection identity (generation/id) in the Model and drop stale events in update — or fix the effect package itself |
 | Fire-and-forget Cmd whose completion a later Msg depends on | Model the pending state as an enum and gate the dependent transition on the completion Msg |
 | `moonbitlang/async/js_async.Promise::wait` inside a Cmd | Use `@rabbita/js` `Promise::wait` — Cmds run on Rabbita's own JS async runtime; mixing runtimes panics at resume |
+| `for child in parent.get_children() { parent.remove_child(...) }` | `@dom.Element::get_children` returns the **live** `HTMLCollection` despite its `Array[Element]` type; removals shrink it under the loop index → `removeChild(undefined)`. Snapshot via an `Array.from(element.children)` extern first (see `references/ffi-packages.md`) |
 
 ## Red Flags in Code Review
 
@@ -116,3 +117,4 @@ Label every non-obvious `Msg` payload — `AgentProgress(run_id~ : Int, Event)`,
 - Conditional sibling rendered before a focus-holding element (index shift = focus loss)
 - A raise-capable call inside `view` without a catch-and-fallback at the boundary
 - Deprecated names (`Dispatch`, `cell_with_dispatch`, `raw_effect`) in new code
+- A loop that mutates the DOM children it is iterating (`get_children()` / any live-collection binding + `remove_child`/`append_child` in the body)

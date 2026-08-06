@@ -217,8 +217,11 @@ fn with_raw_mode(term : Terminal) -> Unit raise {
 ```
 
 Prefer `defer` over duplicating cleanup in both the success path and a `catch`
-branch.
+branch — for **sync** cleanup only. `defer` bodies cannot call async functions
+(compile error: "cannot call async function in defer"); async cleanup needs
+the two-path `catch`/normal split (factor it into a `with_*(async fn(x)
+{ ... })` fixture when it recurs across tests) or `TaskGroup::add_defer`.
 
-In `moonbitlang/async`, `defer` does run on cancellation, but async operations
-inside the cleanup are themselves cancelled — cancellation-safe cleanup
-(`@async.protect_from_cancel` and its refinements) is covered in `async.md`.
+In `moonbitlang/async`, `defer` does run on cancellation; cancellation-safe
+async cleanup (`@async.protect_from_cancel` and its refinements,
+`TaskGroup::add_defer`) is covered in `async.md`.

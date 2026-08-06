@@ -62,6 +62,9 @@ intercepts `malloc`/`free`, preventing ASan from tracking allocations. The
 script replaces `libmoonbitrun.o` with an empty compiled object and restores
 it afterward. Pass `--no-disable-mimalloc` to skip this step.
 
+The same empty-object replacement also fixes allocator conflicts with
+libraries dlopen'd by MoonBit executables on Linux — see pitfall 12 in `c.md`.
+
 ### 2. Package config patching
 
 ASan flags must be injected into package config files. The script snapshots

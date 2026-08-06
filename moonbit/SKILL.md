@@ -54,8 +54,8 @@ Load the reference matching your current work BEFORE writing code:
 | Async IO (`moonbitlang/async` setup, `with_task_group`, async tests, cancellation-safe cleanup, backpressure) | `references/async.md` |
 | Writing tests (snapshot `inspect` family, black-box defaults, docstring tests, `@test.T::snapshot`, error assertions) | `references/testing.md` |
 | Measuring performance (`@bench.T` benchmarks, native `--profile`, before/after methodology) | `references/optimization.md` |
-| Code navigation with `moon ide` (outline/peek-def/find-references/rename/hover/doc) | `references/moon-ide.md` |
-| Binding a C library (`extern "c"`, stubs, ownership, callbacks, ASan) | `references/ffi/c.md` (+ topic files in `references/ffi/`) |
+| Code navigation with `moon ide` (outline/peek-def/find-references/rename/hover/doc/workspace-symbols) | `references/moon-ide.md` |
+| Binding a C library (`extern "c"`, stubs, ownership, callbacks, ASan, disabling bundled mimalloc) | `references/ffi/c.md` (+ topic files in `references/ffi/`) |
 | JS / Wasm / Wasm-GC FFI (`extern "js"`, `#module`, host imports, exports, `moonbit:ffi` callbacks) | `references/ffi/js-wasm.md` |
 | Writing standalone `.mbtx` scripts (script skeleton, inline imports, run commands; package APIs go through the API Lookup Rule) | `references/toolchain.md` |
 | Conditional compilation, link configuration, pre-build commands, warning control | `references/project-config.md` |

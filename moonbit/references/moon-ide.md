@@ -2,22 +2,39 @@
 
 `moon ide` subcommands provide semantic navigation, API discovery, and refactoring for MoonBit projects. **Always prefer `moon ide` over manual `grep` / file searching** — the IDE tools understand MoonBit semantics, save tokens, and are more precise (grep picks up comments and unrelated matches).
 
+This file reflects **moon 0.1.20260803** (moonc v0.10.6). Notable changes from
+older toolchains: `moon ide goto-definition` (with its `-tags`/`-query`
+filters) was **removed** — use `peek-def` for exact lookup or
+`workspace-symbols` for fuzzy search; `workspace-symbols` is **new**; `rename`
+gained `--apply`; `hover`/`peek-def`/`find-references`/`workspace-symbols`
+gained `--json`.
+
+Common flags on every subcommand: `--no-check` (skip the implicit
+`moon check` that refreshes the build graph first) and `--target <backend>`
+(pass through to that check). Run the commands from inside the module — a
+`moon.work` workspace root also works and covers all member modules.
+
 ## Subcommand overview
 
 | Subcommand | Purpose |
 |---|---|
-| `moon ide doc <query>` | API discovery — find functions / types / methods by name |
-| `moon ide outline [dir\|file]` | Top-level symbols in a package or file |
-| `moon ide find-references <sym>` | All usages of a symbol |
-| `moon ide peek-def <sym> [--loc ...]` | Inline definition context |
-| `moon ide hover <sym> --loc ...` | Type signature + docstring at a location |
-| `moon ide goto-definition -query ... [-tags ...]` | Locate symbol definition with rich filtering |
-| `moon ide rename <sym> <new_name> [--loc ...]` | Semantic project-wide rename |
-| `moon ide analyze [path]` | Inspect public API usage when planning safe refactors |
+| `moon ide doc <query>` | API discovery — find functions / types / methods by name (module + deps + core) |
+| `moon ide workspace-symbols <query> [--json]` | Fuzzy-search top-level symbols across the module/workspace, with locations |
+| `moon ide outline [dir\|file]` | Top-level symbols in a package or file, with line numbers |
+| `moon ide peek-def <sym> [--loc ...] [--json]` | Resolve a definition; inline source context |
+| `moon ide find-references <sym> [--loc ...] [--json]` | All usages of a symbol |
+| `moon ide hover [<token>] --loc ... [--output-json]` | Type signature + docstring at a location |
+| `moon ide rename <sym> <new> [--loc ...] [--apply]` | Semantic project-wide rename |
+| `moon ide analyze [pkg-dir...]` | Public API usage counts across dependents |
+| `moon ide gen-symbols` | Write `./symbols.jsonl` for the current package (tooling/tests only — pollutes cwd) |
 
 ## `moon ide doc` — API discovery
 
-Specialized query syntax for symbol lookup.
+Specialized query syntax for symbol lookup. Searches the current module, its
+dependencies, `moonbitlang/core`, and registry symbol indexes
+(`--no-registry` excludes registry packages). Output is signatures and docs —
+no source locations; use `workspace-symbols` or `peek-def` when you need the
+location.
 
 - **Empty query**: `moon ide doc ''`
   - In a module: all available packages (including deps and `moonbitlang/core`)
@@ -40,12 +57,6 @@ type String
   pub fn String::add(String, String) -> String
   # ... more ...
 
-# List all symbols in @buffer
-$ moon ide doc "@buffer"
-moonbitlang/core/buffer
-fn from_array(ArrayView[Byte]) -> Buffer
-# ... omitted ...
-
 # Specific function
 $ moon ide doc "@buffer.new"
 package "moonbitlang/core/buffer"
@@ -57,15 +68,100 @@ pub fn String::rev(String) -> String
 pub fn String::rev_find(String, StringView) -> Int?
 ```
 
+## `moon ide workspace-symbols` — fuzzy symbol search
+
+```
+moon ide workspace-symbols <query> [--json]
+```
+
+Searches top-level symbols in the current module or workspace with the same
+fuzzy matching as the LSP `workspace/symbol` request. An empty query (`''`)
+lists every symbol. Private symbols are included.
+
+```bash
+$ moon ide workspace-symbols 'flip' --json
+[{"name":"pub fn Point::flip","kind":"Function",
+  "location":{"path":"/w/src/kinds.mbt","range":"19:1-21:2"}}]
+```
+
+JSON row shape: `name` is the declaration head (`pub fn Point::flip`,
+`const MaxSize`, `pub enum Color::Green`) — take the last space-separated
+token for the bare name. `kind` is an LSP `SymbolKind` *name*: `Function`,
+`Variable` (const/let), `Enum` (also for `suberror`), `EnumMember`,
+`Object` (struct), `Interface` (trait). `range` is 1-based
+`line:col-line:col` spanning the whole declaration. No match → `[]`, exit 0.
+
+## `moon ide hover` — signature + docs at location
+
+```
+moon ide hover <token> --loc <path:line[:col]>
+moon ide hover --loc <path:line:col>            # token optional with full loc
+```
+
+`--loc` is 1-based; the line is required, and `<token>` only helps find the
+column on that line — with file, line, AND column given it may be omitted.
+Plain output is highlighted source context; `--json` / `--output-json` prints
+one object instead:
+
+```bash
+$ moon ide hover --loc src/lib.mbt:10:3 --output-json
+{"range":"10:3-10:6","contents":["```moonbit\nfn add(a : Int, b : Int) -> Int\n```","\n Adds two integers together."]}
+```
+
+`contents` is markdown sections (signature block, then docstring); `range` is
+the hovered token's 1-based span. Nothing at the position → non-zero exit
+with a message, no JSON.
+
+## `moon ide peek-def` — definition context
+
+Better than `grep` (semantic, not textual):
+
+```
+moon ide peek-def <symbol>                        # semantic query, module/workspace-wide
+moon ide peek-def <token> --loc <path[:line[:col]]>
+moon ide peek-def --loc <path:line:col> [--json]
+```
+
+Accepted symbol forms: `foo`, `@pkg.foo`, `Type::member`,
+`@pkg.Type::member`, `Trait::method for Type`. With file-only `--loc` the
+lookup is restricted to that file; with line/col the symbol resolves from the
+exact position (use for locals, shadowed names, ambiguity). The line must be
+precise; the column can be approximate when `<token>` narrows it down.
+
+```bash
+$ moon ide peek-def bare_symbol_name
+Found 1 symbols matching 'bare_symbol_name':
+
+`fn bare_symbol_name` in package my/mod/pkg at /w/src/names.mbt:661-670
+661 | ///|
+    | /// The bare symbol name out of a declaration head ...
+    | fn bare_symbol_name(head : String) -> String? {
+
+$ moon ide peek-def bare_symbol_name --json
+[{"path":"/w/src/names.mbt","range":"665:4-665:20"}]
+```
+
+## `moon ide find-references`
+
+```
+moon ide find-references <symbol>                 # semantic query, module/workspace-wide
+moon ide find-references <token> --loc <path[:line[:col]]>
+moon ide find-references --loc <path:line:col> [--json]
+```
+
+Same symbol forms and `--loc` resolution rules as `peek-def`. Output: the
+resolved definition followed by all reference locations; `--json` prints them
+as an array.
+
 ## `moon ide rename` — semantic rename
 
 ```
-moon ide rename <sym> <new_name> [--loc filename:line:col]
+moon ide rename <symbol> <new-name> [--loc <path[:line[:col]]>] [--apply]
 ```
 
-When names are ambiguous, pass `--loc` to disambiguate. The command emits a patch you can apply.
-
-Example: `Can you rename compute_sum to calculate_sum?`
+Without `--apply`, prints a patch-style edit list for review; with `--apply`,
+rewrites the files and prints a summary. When names are ambiguous, pass
+`--loc` to disambiguate.
 
 ```
 $ moon ide rename compute_sum calculate_sum --loc math_utils.mbt:2
@@ -79,159 +175,42 @@ $ moon ide rename compute_sum calculate_sum --loc math_utils.mbt:2
 @@
 -pub fn compute_sum(a: Int, b: Int) -> Int {
 +pub fn calculate_sum(a: Int, b: Int) -> Int {
-*** Update File: math_utils_test.mbt
-@@
--  inspect(@math_utils.compute_sum(1, 2))
-+  inspect(@math_utils.calculate_sum(1, 2))
 *** End Patch
 ```
 
-## `moon ide hover` — signature + docs at location
-
-```
-moon ide hover <sym> --loc filename:line:col
-```
-
-Example: "What is the signature and docstring of `filter` at line 14 of hover.mbt?"
-
-```
-$ moon ide hover filter --loc hover.mbt:14
-test {
-  let a: Array[Int] = [1]
-  inspect(a.filter((x) => {x > 1}))
-            ^^^^^^
-            fn[T] Array::filter(self : Array[T], f : (T) -> Bool raise?) -> Array[T] raise?
-            ---
-            Creates a new array containing all elements from the input array that satisfy
-            ... omitted ...
-}
-```
-
-## `moon ide peek-def` — definition context
-
-Better than `grep` (semantic, not textual):
-
-```
-moon ide peek-def <sym> [--loc filename:line:col]
-```
-
-Example: "Is `Parser::read_u32_leb128` implemented correctly?"
-
-```
-$ moon ide peek-def Parser::read_u32_leb128
-file src/parse.mbt
-L45:|///|
-L46:|fn Parser::read_u32_leb128(self : Parser) -> UInt raise ParseError {
-L47:|  ...
-```
-
-Follow up — see the `Parser` struct definition:
-
-```
-$ moon ide peek-def Parser --loc src/parse.mbt:46:4
-Definition found at file src/parse.mbt
-  | ///|
-2 | priv struct Parser {
-  |             ^^^^^^
-  |   bytes : Bytes
-  |   mut pos : Int
-  | }
-```
-
-For `--loc`, the line number must be precise; the column can be approximate (the positional `<sym>` narrows it down).
-
-If the symbol is a toplevel name, you can omit `--loc`:
-
-```
-$ moon ide peek-def String::rev
-Found 1 symbols matching 'String::rev':
-`pub fn String::rev` in package moonbitlang/core/builtin at ...:1039-1044
-```
-
-## `moon ide outline` & `find-references`
+## `moon ide outline`
 
 ```
 moon ide outline .                  # outline current package, per-file headers
 moon ide outline parser.mbt         # outline a single file
-moon ide find-references <sym>      # usages across the current module
+moon ide outline path/to/pkg        # outline another package directory
 ```
 
-Use outline to quickly inventory a package or find the right file before `goto-definition`.
+Prints top-level declarations with line numbers, per file. Use it to quickly
+inventory a package or find the right file before `peek-def`.
 
 ```
-$ moon ide outline .
-spec.mbt:
- L003 | pub(all) enum CStandard {
-        ...
- L013 | pub(all) struct Position {
-        ...
-
-$ moon ide find-references TranslationUnit
+$ moon ide outline desktop/internal/moonbit
+toolchain_paths.mbt:
+  2 |const MoonbitBundleStampFile : String = ".openseek-moonbit-bundle-version"
+    |...
+  8 |fn moonbit_toolchain_dir(base : @path.Path, name : String) -> @path.Path {
+    |...
 ```
 
-## `moon ide goto-definition` — richer query
+## `moon ide analyze`
 
-Two-part query system: symbol name (with optional `@pkg` prefix) + tag filters.
-
-### Symbol name queries (`-query`)
-
-Fuzzy search with package filtering:
-
-```bash
-moon ide goto-definition -query 'symbol'                                    # any symbol
-moon ide goto-definition -query 'Type::method'                              # methods of a type
-moon ide goto-definition -query 'Trait for Type with method'                # trait method impl
-moon ide goto-definition -query '@moonbitlang/x encode'                     # scope to a package
-moon ide goto-definition -query '@a/mod/pkg1 @a/mod/pkg2 helper'            # pkg1 OR pkg2
-moon ide goto-definition -query '@username/mymodule/mypkg helper'           # nested package
+```
+moon ide analyze [<package-dir>...]
 ```
 
-**Supported symbols**: functions, constants, let bindings, types, structs, enums, traits. **Package filtering**: `@pkg` prefixes create OR conditions.
+Reports how public APIs are used by dependents — exported items annotated
+with usage counts. With no paths, analyzes all local packages in the module
+or workspace. Use it when planning safe refactors and API shrinkage.
 
-### Tag filters (`-tags`)
+## `moon ide gen-symbols`
 
-Pre-filter by symbol characteristics before name matching.
-
-**Visibility:** `pub`, `pub all`, `pub open`, `priv`
-
-**Symbol type:** `type`, `error`, `enum`, `struct`, `alias`, `let`, `const`, `fn`, `trait`, `impl`, `test`
-
-Combine with `|` (OR) and parentheses:
-
-```bash
-moon ide goto-definition -tags 'pub fn'          -query 'my_func'
-moon ide goto-definition -tags 'fn | const'      -query 'helper'
-moon ide goto-definition -tags 'pub (fn | const)' -query 'api'
-moon ide goto-definition -tags 'pub (type | trait)' -query 'MyType'
-```
-
-### Practical examples
-
-```bash
-# Public function definition
-moon ide goto-definition -tags 'pub fn' -query 'maximum'
-
-# References to a struct
-moon ide find-references -tags 'struct' -query 'Rectangle'
-
-# Trait implementations
-moon ide goto-definition -tags 'impl' -query 'Show for MyType'
-
-# Error types in a package
-moon ide goto-definition -tags 'error' -query '@mymodule/parser ParseError'
-
-# Across multiple packages
-moon ide goto-definition -query '@moonbitlang/x @moonbitlang/core encode'
-
-# Package + tags combined
-moon ide goto-definition -tags 'pub fn' -query '@username/myapp helper'
-```
-
-### Query processing order
-
-1. Filter by `-tags`
-2. Extract `@pkg` prefixes from `-query` for scope
-3. Fuzzy match remaining symbols by name
-4. Return top 3 matches with locations
-
-**Best practice**: start with `-tags` to reduce noise, then add `@pkg` in `-query` to scope precisely.
+Writes all symbols of the **current package** to `./symbols.jsonl` (with
+declaration and name ranges). Mainly for tooling and tests; it prints nothing
+to stdout and drops a file into the package directory — prefer
+`workspace-symbols` for interactive lookup.

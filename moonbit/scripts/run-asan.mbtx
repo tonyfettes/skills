@@ -1,7 +1,7 @@
 ///| Run MoonBit native tests with AddressSanitizer.
 ///|
 ///| Parses each specified package file (moon.pkg DSL via
-///| moonbitlang/parser/moon_config, or moon.pkg.json via @json), patches
+///| moonbitlang/moon_config, or moon.pkg.json via @json), patches
 ///| link.native with ASan flags, disables
 ///| mimalloc, runs `moon test`, and restores everything afterward.
 ///|
@@ -18,7 +18,7 @@ import {
   "moonbitlang/async/fs",
   "moonbitlang/x/path",
   "moonbitlang/x/sys",
-  "moonbitlang/parser/moon_config",
+  "moonbitlang/moon_config",
   "tonyfettes/platform",
 }
 

@@ -98,11 +98,14 @@ should be swallowed, discuss that behavior with the user before doing it.
 ## Cancellation-safe cleanup
 
 Cancellation is delivered as a raised error at suspension points, so
-`defer`/`catch` blocks do run on cancellation — but any **async operation
-inside the cleanup** is itself cancelled immediately while the task is being
-cancelled. Must-complete async cleanup (terminal-state restore,
-external-resource release) needs `@async.protect_from_cancel` or
-`TaskGroup::add_defer` with the same protection inside. Refinements from
+`defer`/`catch` blocks do run on cancellation. Plain `defer` cannot contain
+async calls at all (compile error "cannot call async function in defer"), so
+async cleanup lives in a `catch`-plus-normal-path split or in
+`TaskGroup::add_defer` — and there, any **async operation inside the
+cleanup** is itself cancelled immediately while the task is being cancelled.
+Must-complete async cleanup (terminal-state restore, external-resource
+release) needs `@async.protect_from_cancel` or `TaskGroup::add_defer` with
+the same protection inside. Refinements from
 production review:
 
 - In practice, protect only the cancelled path and leave the normal path

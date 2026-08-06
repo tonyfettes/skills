@@ -165,6 +165,21 @@ async fn main {
 Use `async fn main` only when the script depends on async packages. Import the
 base async package when the current async package docs require it.
 
+Import-block resolution rules (moon 0.1.20260716+):
+
+- Entries may pin a version inline: `"moonbitlang/x@0.4.38/stack"`; alias with
+  a trailing `@name`: `"moonbitlang/x@0.4.38/stack" @xstack`.
+- Versionless entries must be resolvable from the local registry index (run
+  `moon update` if resolution fails).
+- The path is `username/module[/package]` — a path that crosses into a nested
+  module inside another repo does NOT resolve. Example: `moon_config` was
+  split out of `moonbitlang/parser` into its own module; import
+  `"moonbitlang/moon_config"`, not `"moonbitlang/parser/moon_config"`.
+- `.mbt.md` single-file mode uses YAML front matter instead:
+  `moonbit:` → `deps:` (module: version map) and/or `import:`
+  (`- path: user/mod@ver/pkg`, `alias: name`). `moonbit.deps` and
+  `moonbit.import` are mutually exclusive with legacy whole-module import.
+
 Run scripts with the native target when they use packages backed by native
 runtime or C FFI:
 
