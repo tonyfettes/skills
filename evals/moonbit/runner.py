@@ -12,8 +12,11 @@ Isolation:
             whose contents are copied into the fresh config dir.
   - codex:  fresh CODEX_HOME per trial with only auth.json copied in.
 Skill injection (variant != control):
-  - claude: <work>/.claude/skills/moonbit
-  - codex:  <CODEX_HOME>/skills/moonbit
+  - claude: <work>/.claude/skills/<skill>
+  - codex:  <CODEX_HOME>/skills/<skill>
+  where <skill> is the task's meta.json "skill" field (default "moonbit"),
+  resolved against the repo root — so tasks can test other skills (e.g.
+  rabbita-panel-split tests the rabbita skill).
 """
 
 import argparse
@@ -30,7 +33,7 @@ from pathlib import Path
 
 HARNESS = Path(__file__).resolve().parent
 TASKS_DIR = HARNESS / "tasks"
-SKILL_SRC = HARNESS.parent.parent / "moonbit"
+REPO = HARNESS.parent.parent
 RESULTS_DIR = HARNESS / "results"
 
 _write_lock = threading.Lock()
@@ -49,6 +52,18 @@ def tool_version(cmd):
 
 def build_prompt(task_dir):
     return (task_dir / "prompt.md").read_text()
+
+
+def task_skill(task_dir):
+    """Which skill this task tests — meta.json "skill", default "moonbit"."""
+    try:
+        name = json.loads((task_dir / "meta.json").read_text()).get("skill", "moonbit")
+    except Exception:
+        name = "moonbit"
+    src = REPO / name
+    if not (src / "SKILL.md").is_file():
+        raise ValueError(f"task {task_dir.name}: skill '{name}' not found at {src}")
+    return name, src
 
 
 def isolated_env(trial_dir):
@@ -71,7 +86,8 @@ def setup_claude(trial_dir, work, variant, args):
     if args.claude_config_seed:
         shutil.copytree(args.claude_config_seed, home, dirs_exist_ok=True)
     if variant != "control":
-        shutil.copytree(SKILL_SRC, work / ".claude" / "skills" / "moonbit")
+        name, src = task_skill(trial_dir / "task")
+        shutil.copytree(src, work / ".claude" / "skills" / name)
     env = isolated_env(trial_dir)
     env["CLAUDE_CONFIG_DIR"] = str(home)
     cmd = [
@@ -91,7 +107,8 @@ def setup_codex(trial_dir, work, variant, args):
     if auth.exists():
         shutil.copy(auth, home / "auth.json")
     if variant != "control":
-        shutil.copytree(SKILL_SRC, home / "skills" / "moonbit")
+        name, src = task_skill(trial_dir / "task")
+        shutil.copytree(src, home / "skills" / name)
     env = isolated_env(trial_dir)
     env["CODEX_HOME"] = str(home)
     cmd = [
@@ -106,11 +123,11 @@ def setup_codex(trial_dir, work, variant, args):
     return cmd, env
 
 
-def transcript_metrics(text):
+def transcript_metrics(text, skill="moonbit"):
     return {
         # any read/mention of the injected skill files (paths only — a bare
         # "references/" also appears in vendored dep paths and false-fires)
-        "skill_loaded": bool(re.search(r"skills/moonbit|moonbit-docs|SKILL\.md", text)),
+        "skill_loaded": bool(re.search(rf"skills/{skill}|{skill}-docs|SKILL\.md", text)),
         # compiler diagnostic rounds observed in tool output
         "compile_errors_seen": len(re.findall(r"Error: \[", text)),
         "deprecation_warnings_seen": len(re.findall(r"Warning: \[0020\]|Warning: \[0027\]", text)),
@@ -173,13 +190,15 @@ def run_trial(spec, args, run_dir):
     (trial_dir / "verify.log").write_text(v.stdout + v.stderr)
 
     text = transcript.read_text() if transcript.exists() else ""
+    skill_name, _ = task_skill(task_src)
     row = {
         "run_id": args.run_id, "task": task, "agent": agent,
         "variant": variant, "trial": idx,
+        "skill": skill_name,
         "pass": passed, "status": status, "agent_rc": agent_rc,
         "duration_s": duration,
         "verify_tail": (v.stdout + v.stderr).strip().splitlines()[-1:],
-        **transcript_metrics(text),
+        **transcript_metrics(text, skill_name),
     }
     if agent == "claude":
         row.update(claude_result_metrics(transcript))
@@ -216,8 +235,9 @@ def main():
     run_dir = RESULTS_DIR / args.run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    skill_rev = sh(["git", "-C", str(SKILL_SRC), "rev-parse", "--short", "HEAD"]).stdout.strip()
-    dirty = bool(sh(["git", "-C", str(SKILL_SRC), "status", "--porcelain", "--", "moonbit"]).stdout.strip())
+    skills = sorted({task_skill(TASKS_DIR / t)[0] for t in args.tasks.split(",")})
+    skill_rev = sh(["git", "-C", str(REPO), "rev-parse", "--short", "HEAD"]).stdout.strip()
+    dirty = bool(sh(["git", "-C", str(REPO), "status", "--porcelain", "--"] + skills).stdout.strip())
     manifest = {
         "run_id": args.run_id,
         "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"),

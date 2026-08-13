@@ -1,3 +1,4 @@
 results/
 tasks/*/template/_build/
 tasks/*/template/.mooncakes/
+__pycache__/

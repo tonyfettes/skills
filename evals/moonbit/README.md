@@ -1,8 +1,13 @@
 # moonbit skill A/B eval harness
 
-Measures whether the `moonbit` skill actually changes agent behavior, by
-running headless agents (claude / codex) on small MoonBit tasks in isolated
+Measures whether a skill actually changes agent behavior, by running
+headless agents (claude / codex) on small MoonBit tasks in isolated
 sandboxes and grading the results with hidden conformance tests.
+
+Most tasks test the `moonbit` skill; a task can test another skill from
+this repo by naming it in meta.json (`"skill": "rabbita"`) — the runner
+injects that skill directory instead (CLI arms only; the subagent arm
+below is still moonbit-specific).
 
 One trial = `(task, agent, variant)`:
 
@@ -63,13 +68,25 @@ them with `claude` CLI rows**:
 
 - Sandboxes live outside the repo (`--scratch`, default `/tmp/moonbit-skill-evals`),
   so control agents cannot find the skill by walking the repo.
+- **Isolation covers discovery, not adversarial search.** Codex's
+  workspace-write sandbox restricts writes, not reads: a control agent that
+  greps absolute paths (`rg ... /Users`, the scratch root) can reach the
+  real skill in the repo, `~/.agents/skills`, or a concurrent skill-variant
+  sandbox — observed once in run `rabbita-smoke1`, where a control trial
+  rg'd the scratch root and read the sibling trial's injected skill docs.
+  A control row with `skill_loaded` set means exactly this; treat the trial
+  as contaminated (bias is conservative — it shrinks the measured delta).
+  Prompts now forbid reading outside the workdir; running with
+  `--workers 1` also keeps control trials from coexisting with
+  skill-variant sandboxes (variants run control-first per task).
 - `HOME` is pointed at an empty dir per trial — **both CLIs discover skills
   via `~/.agents/skills`**, where this skill is globally symlinked; without
   this the control group is contaminated.
 - `MOON_HOME` is pinned to the real `~/.moon` so the toolchain and the
   registry cache still resolve under the fake `HOME`.
-- Skill injection: claude → `<work>/.claude/skills/moonbit`;
-  codex → `<CODEX_HOME>/skills/moonbit`.
+- Skill injection: claude → `<work>/.claude/skills/<skill>`;
+  codex → `<CODEX_HOME>/skills/<skill>` (skill per task meta.json,
+  default `moonbit`).
 
 ## Task layout
 
@@ -80,7 +97,7 @@ tasks/<id>/
   conformance/   # hidden test package, injected by verify.sh AFTER the agent run
   solution/      # reference solution — used to validate the task, never shipped
   verify.sh      # grades <workdir>: behavioral tests + static checks
-  meta.json      # which skill reference this task tests, expected naive failure
+  meta.json      # which skill ("skill", default moonbit) and reference this task tests, expected naive failure
 ```
 
 Design rules learned while building the first three tasks:

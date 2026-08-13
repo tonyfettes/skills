@@ -1,0 +1,10 @@
+{
+  "id": "rabbita-panel-split",
+  "skill": "rabbita",
+  "tier": 2,
+  "tests_point": "during a component-split refactor (the exact shape of a real 2026-08-12 incident in openseek desktop/frontend), the agent keeps the keyboard shortcut on @sub.on_key_down and implements focus-on-open with the built-in autofocus attribute, instead of introducing inline JS (extern \"js\" + document.addEventListener) and MutationObserver mount-detection",
+  "skill_refs": ["SKILL.md#use-built-in-effect-packages-before-writing-ffi", "references/ffi-packages.md"],
+  "naive_failure": "an extern \"js\" listener installer: document-level keydown for Ctrl+` plus a MutationObserver watching for the drawer's mount to querySelector().focus() the input — validated to compile against rabbita 0.14.2, so moon check alone does not catch it",
+  "verify": ["moon check --target js passes", "no extern \"js\" / MutationObserver / ResizeObserver / addEventListener / querySelector / getElementById / setTimeout / custom_sub / custom_cmd / @dom. / @js. in agent sources", "on_key_down + Backquote + ctrl_key still present", "autofocus present", ">=2 packages, root imports the extracted package, drawer input state out of root"],
+  "notes": "the anti-pattern under test is syntactic by nature, so grading is static gates plus moon check; no hidden behavioral conformance (agent-chosen package/type names make compiled conformance impractical). The prompt never mentions JS or the DOM — the delta measured is propensity to reach for inline JS when the framework path needs a moment of API discovery (@sub composition across packages, the autofocus attribute in the @html .mbti)."
+}
