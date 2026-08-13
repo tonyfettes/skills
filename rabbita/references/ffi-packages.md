@@ -16,6 +16,8 @@ Rabbita already ships Cmd/Sub-returning wrappers for most browser effects. Use t
 
 Escape hatches — `@cmd.custom_cmd`, `@sub.custom_sub`, `@cmd.effect`, `@cmd.attempt`, `@html.Attrs`, `@dom`, `trait Scheduler` — are for binding JS libraries the built-ins don't cover (an editor widget, a charting library, xterm.js, ...). Only then write an FFI package, following the rules below.
 
+Adding any **new** `extern "js"` body requires the user's explicit approval first — present which built-ins you checked and why they don't cover the need (see SKILL.md for the anti-patterns this gate exists to catch).
+
 ## Anti-patterns with built-in commands
 
 - **Ignoring the returned `Cmd`/`Request`**: `@http.get("api/user") |> ignore` does nothing. Return the Cmd from update.

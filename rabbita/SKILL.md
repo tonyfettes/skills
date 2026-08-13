@@ -29,6 +29,14 @@ Rabbita ships Cmd/Sub-returning packages for most browser effects: `@http`, `@we
 
 Avoid the escape hatches — `@cmd.custom_cmd`, `@sub.custom_sub`, `@cmd.effect`, `@cmd.attempt`, `@html.Attrs`, `@dom`, `trait Scheduler` — unless you are binding a JS library the built-ins genuinely don't cover (then follow `references/ffi-packages.md`).
 
+**Writing new inline JS requires the user's explicit approval.** Never add a new `extern "js"` body without first asking the user, naming the built-ins you checked and why they fall short. Inline JS is where anti-patterns enter the codebase unnoticed — real cases caught in review:
+
+- Replacing a working built-in subscription (`@sub.on_key_down`) with a raw `document.addEventListener` during a component refactor.
+- Rendering `data-*` marker attributes and watching them with a `MutationObserver` to signal state changes between components — using the DOM as a message bus. State flows through `Msg`/`Emit`/component `Input`, never out through the DOM and back.
+- Deciding business logic inside the JS string — shortcut matching, platform detection (`navigator.platform`), URL allowlists, close-on-outside-click via `closest()`. Carry the raw event through a `Msg` and decide in update.
+
+Each of these compiled and worked, which is exactly why they need a human gate. Editing an existing extern in an established FFI binding package does not need re-approval.
+
 Routing: map the URL into the model with `@html.a`, `@sub.on_url_changed`, and `@sub.on_url_request` — do not encode a navigation state machine in update.
 
 ## Route to references by task
@@ -96,6 +104,9 @@ Label every non-obvious `Msg` payload — `AgentProgress(run_id~ : Int, Event)`,
 | New message handler without purity test | Add idempotence + dummy trap tests |
 | `Dispatch` / `cell_with_dispatch` / `@cmd.raw_effect` in new code | `Emit` / `cell` (or `cell_with_emit`) / `@cmd.custom_cmd` |
 | `@cmd.custom_cmd` inline in update | Use a built-in package, or move into an FFI package as a named Cmd function |
+| New `extern "js"` written without asking the user | Stop; propose it with the built-ins you checked and wait for approval |
+| `data-*` marker + `MutationObserver` so a component notices its own input changed | Deliver the change through the component's `Input`/`Msg`; state never round-trips through the DOM |
+| Raw `document.addEventListener` for keys/clicks in a sub loader | `@sub.on_key_down` / `@sub.on_mouse_down` etc.; keep the match-and-decide logic in update |
 | Trailing `@html.nothing` on `hr`/`br`/`img`/`input` | Void elements take zero children (rabbita ≥0.12.4) |
 | Parsing/deriving expensive data inside `view` | Cache it in the Model at message time; view reads the cache |
 | Mutable `Ref` flag inside a sub loader / FFI closure to mute or filter events | Track connection identity (generation/id) in the Model and drop stale events in update — or fix the effect package itself |
@@ -106,6 +117,10 @@ Label every non-obvious `Msg` payload — `AgentProgress(run_id~ : Int, Event)`,
 ## Red Flags in Code Review
 
 - Hand-rolled `extern "js"` for something a built-in package covers
+- New inline JS the user never approved (see the approval rule above)
+- `MutationObserver` watching attributes the app itself renders (DOM as message bus)
+- Global capture-phase listener calling `preventDefault`/`stopPropagation` behind the renderer's back
+- Shortcut matching, platform detection, or URL filtering inside a JS string instead of update
 - FFI package exposes `pub fn` that returns `Unit` (should return `Cmd`)
 - FFI type has no `dummy()` constructor
 - `Cmd`, `Msg`, or `Request` values stored in a model field or global
