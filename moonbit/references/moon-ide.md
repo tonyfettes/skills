@@ -201,12 +201,39 @@ toolchain_paths.mbt:
 ## `moon ide analyze`
 
 ```
-moon ide analyze [<package-dir>...]
+moon ide analyze [<package-dir>...] [--target <backend>] [--no-check]
 ```
 
 Reports how public APIs are used by dependents — exported items annotated
 with usage counts. With no paths, analyzes all local packages in the module
 or workspace. Use it when planning safe refactors and API shrinkage.
+
+Practical usage (validated on moon 0.1.20260807):
+
+- **Mixed-target workspace: run from the module dir and pass `--target`.**
+  A bare workspace-wide run checks the canonical backend and *silently
+  omits* packages that only build on another target (e.g. js-only frontend
+  packages simply don't appear in the report). `cd <module> && moon ide
+  analyze --target js` brings them back.
+- **The path filter can fail to match valid package dirs** ("no package
+  directories found in input paths" for a directory that clearly holds a
+  `moon.pkg`, relative or absolute, from any cwd). Workaround: run with no
+  paths and extract your package's section from the output (it is delimited
+  by `package "<full/pkg/path>"` headers).
+- **Reading `usage: N (M in test)`: counts are dependents-only.**
+  Same-package callers are NOT counted, and the package's own black-box
+  `*_test.mbt` files compile as a separate package, so they count as
+  dependent "test" usage. Consequences:
+  - usage entirely `(N in test)` from the package's own black-box tests
+    means the item is public only for its tests;
+  - `usage: 0` means *safe to demote from `pub`*, not *dead*: check
+    in-package callers before deleting, and remember implicit uses that
+    grep can't see (a `for k, v in x` loop calls `iter2()` through the
+    iteration protocol; record literals construct a struct without naming
+    it). Demotion is the safe move — the compiler then arbitrates deletion.
+- Structs whose fields all show `usage: 0` are annotated
+  `// (all) or (open) can be removed` — construction counts as field usage,
+  so this annotation is semantic evidence no dependent builds the value.
 
 ## `moon ide gen-symbols`
 

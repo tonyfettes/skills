@@ -58,6 +58,7 @@ Rabbita has no keyed diff and no built-in escape hatch for third-party DOM widge
 
 Soft keyboards appear and disappear with focus — the model must drive focus explicitly:
 
-- Issue an explicit focus Cmd whenever a composer is shown or the active view/task switches; an "open" composer without focus means no keyboard.
+- For focus-on-mount of a conditionally rendered element, use the built-in `autofocus=true` attribute (`@html.input` / `textarea` / `button` all take it) — the node is fresh on each mount, so the attribute fires every time. Do NOT reach for a `@cmd.custom_cmd` + `@dom` lookup to focus it; that's the escape hatch (and needs user approval like any new inline JS).
+- Issue an explicit focus Cmd (a named Cmd from an FFI package, not an inline DOM poke) only when refocusing an element that already exists — e.g. a composer whose view/task switches under it; an "open" composer without focus means no keyboard.
 - Blur (and thus dismiss the keyboard) before opening overlays/drawers; keep one element focused across soft-key taps so the keyboard doesn't flicker closed.
 - iOS Safari auto-zooms any focused text control whose computed font-size is < 16px — fix with real 16px type (optionally `scale()` compensation), never with `user-scalable=no`.

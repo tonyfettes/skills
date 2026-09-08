@@ -46,6 +46,34 @@ test "string indexing and utf8 encode/decode" {
 }
 ```
 
+### Ordering is by LENGTH first, not dictionary order
+
+`String::compare` (and therefore `<`, `sort()`, `Map`/`Set` ordering on string
+keys) compares **length before content**. `"b" < "aa"` is `true`. Sorting
+produces length-major groups, alphabetical only within one length:
+
+```mbt check
+///|
+test "string ordering is length-major" {
+  assert_true("b" < "aa") // NOT dictionary order
+  assert_eq("abc".compare("abd"), -1) // same length → content decides
+  let words = ["b", "aa", "a", "zz", "cccc"]
+  words.sort()
+  assert_eq(words, ["a", "b", "aa", "zz", "cccc"])
+}
+```
+
+`StringView` compares the same way. This is a silent-wrong-result trap, not a
+compile error: nothing rejects `names.sort()` when what you needed was
+dictionary order, and a test that pins a "sorted" expectation will look wrong
+when it is the expectation that assumed lexicographic order.
+
+When you need dictionary order, sort with an explicit comparator over the
+characters. When you only need determinism (canonical output, stable snapshot),
+the built-in order is fine — say so in a comment so the next reader does not
+"fix" it. When the test only means "these are the elements", assert membership
+and length instead of sorting at all.
+
 ### String interpolation && StringBuilder
 
 `\{expr}` for interpolation; custom types must implement `Show`:

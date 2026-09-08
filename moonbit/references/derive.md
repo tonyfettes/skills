@@ -12,7 +12,7 @@ Configuring auto-derived traits. For the bare list of derivable traits, see `typ
 
 | Trait | Enables |
 |---|---|
-| `Debug` | `debug_inspect()`, `\{to_repr(value)}` interpolation — the derivable default for data types |
+| `Debug` | `debug_inspect()`, `\{Repr(value)}` interpolation (`to_repr` is its deprecated old name) — the derivable default for data types |
 | `Show` | `to_string()`, string interpolation `\{value}` — manual `impl` for display formats; deriving for debugging is deprecated |
 | `Eq` | `==`, `!=` |
 | `Compare` | `<`, `>`, `<=`, `>=` (orders enums by definition order) |

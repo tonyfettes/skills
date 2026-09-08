@@ -10,7 +10,11 @@ Authoritative guide for writing, refactoring, testing, and binding MoonBit proje
 ## Toolchain version baseline
 
 This skill was written/validated against **MoonBit toolchain v0.10.4** (moonc
-v0.10.4, released 2026-07-13; skill last updated 2026-07-20).
+v0.10.4, released 2026-07-13; skill last updated 2026-08-18). Spot-updates
+validated on moonc v0.10.7-nightly (2026-08-12): `guard!` semantics
+(`references/language.md`) and the `to_repr(x)` → `Repr(x)` deprecation.
+Labelled blocks (`references/control-flow.md`) validated on moonc v0.10.8
+(2026-08-18).
 
 **Assume the toolchain is v0.10.4** and follow this skill's guidance as-is —
 do not preemptively run `moon version` or second-guess the references. Deviate
@@ -38,7 +42,7 @@ Load the reference matching your current work BEFORE writing code:
 | Arrays, `Map`, view types, spread `..x`, `Iter`/`iter()` protocol | `references/collections.md` |
 | `Bytes`, byte containers (`Buffer()`), `BytesView`, bitstring patterns (binary parsing) | `references/bytes.md` |
 | Error handling (`suberror`, `raise`/`catch`/`noraise`, `raise?`, `try`) | `references/errors.md` |
-| Loops and control flow (`for`, functional `loop`, `while`/`nobreak`, labelled loops, pipe operators, loop invariants, `defer`) | `references/control-flow.md` |
+| Loops and control flow (`for`, functional `loop`, `while`/`nobreak`, labelled loops/blocks, pipe operators, loop invariants, `defer`) | `references/control-flow.md` |
 | Methods, traits, trait objects (`&Trait`), trait/impl visibility, dot-resolution rules, operator overloading, indexing operators (`#alias`) | `references/traits-methods.md` |
 | Configuring `derive(...)` — JSON enum styles, rename rules, container/case/field args | `references/derive.md` |
 | Running `moon` commands (check / build / test / fmt / info / run) | `references/toolchain.md` |
@@ -54,7 +58,7 @@ Load the reference matching your current work BEFORE writing code:
 | Async IO (`moonbitlang/async` setup, `with_task_group`, async tests, cancellation-safe cleanup, backpressure) | `references/async.md` |
 | Writing tests (snapshot `inspect` family, black-box defaults, docstring tests, `@test.T::snapshot`, error assertions) | `references/testing.md` |
 | Measuring performance (`@bench.T` benchmarks, native `--profile`, before/after methodology) | `references/optimization.md` |
-| Code navigation with `moon ide` (outline/peek-def/find-references/rename/hover/doc/workspace-symbols) | `references/moon-ide.md` |
+| Code navigation with `moon ide` (outline/peek-def/find-references/rename/hover/doc/workspace-symbols), API-shrinkage planning with `moon ide analyze` (dependent usage counts; mixed-target + path-filter gotchas) | `references/moon-ide.md` |
 | Binding a C library (`extern "c"`, stubs, ownership, callbacks, ASan, disabling bundled mimalloc) | `references/ffi/c.md` (+ topic files in `references/ffi/`) |
 | JS / Wasm / Wasm-GC FFI (`extern "js"`, `#module`, host imports, exports, `moonbit:ffi` callbacks) | `references/ffi/js-wasm.md` |
 | Writing standalone `.mbtx` scripts (script skeleton, inline imports, run commands; package APIs go through the API Lookup Rule) | `references/toolchain.md` |
@@ -74,7 +78,7 @@ Mined from real session history; these caused the most compiler pushback by far:
 5. **Write `!expr`, not `not(expr)`** (deprecated).
 6. **Materialize a `StringView` with `.to_owned()`, never `.to_string()`** (that's the deprecated `Show` display path).
 7. **Treat every `X::new()` / `@pkg.new()` as suspect — constructors are type-named now**: `Ref(x)`, `Map([], capacity=...)`, `Set([])`, `Buffer()`, `Queue()`, `Deque([], capacity=...)`, `Server(...)`. Also: `b"..."` for `Bytes` literals; `to_owned` not `to_array`; `trim()` not `trim_space`; the whole `@string.parse_int` / `parse_uint` / `parse_int64` / `parse_double` family (not `@strconv.*`); `reinterpret_as_int` / `reinterpret_as_uint` for Byte/UInt conversions; `unwrap_or_else` not `or_else`; `has_prefix` / `has_suffix` not `starts_with` / `ends_with`; `length()` not `size()`.
-8. **"does not implement trait Show/Eq" means a missing derive** — `==` / `!=` needs `derive(Eq)`; interpolation `\{x}` needs `Show` (or use `\{to_repr(x)}` for debug-only display). Check derives before writing comparisons on new enums/structs; this is the single most common type error in real sessions.
+8. **"does not implement trait Show/Eq" means a missing derive** — `==` / `!=` needs `derive(Eq)`; interpolation `\{x}` needs `Show` (or use `\{Repr(x)}` for debug-only display; `to_repr(x)` is its deprecated old name). Check derives before writing comparisons on new enums/structs; this is the single most common type error in real sessions.
 9. **In a workspace mixing js/native modules, bare `moon check/test/build/info` defaults to wasm-gc and fails** — always pass `--target js|native` (run both for shared packages). And never run `moon info --target X` to refresh `.mbti` in a multi-target package: it rewrites `pkg.generated.mbti` to that target's specialized surface — regenerate with default-target `moon info` and revert such diffs.
 10. **Native `String` and `Bytes` are NUL-terminated by the runtime.** `String` has a trailing UTF-16 zero code unit and `Bytes` has a trailing zero byte; `length()` excludes that sentinel. At C FFI boundaries, pass UTF-8 strings as `@utf8.encode(s)` for `const char *` — do not hand-roll conversion loops or append an extra `\0` unless the NUL is part of the logical payload. Read `references/ffi/c.md` before editing `extern "c"` bindings, C stubs, or `char *` call sites.
 
@@ -253,7 +257,7 @@ my_module
 - **`#cfg` platform-gated code is NOT type-checked on other platforms** — `--target all` covers backends, not OSes. After editing OS-specific (`#cfg`-gated) code, say so explicitly and verify the foreign branch (CI matrix or a temporary cfg-stripped check).
 - **Don't ignore error handling** — errors must be explicitly handled
 - **Do not introduce `abort` without explicit user approval** — before writing MoonBit code that calls `abort`, pause and ask the user to confirm that aborting is the intended behavior. Only use `abort` after that confirmation; otherwise model the failure with a typed error/`raise`, `Result`, or an approved adapter.
-- **Do not write `guard` without `else` without explicit user approval** — `guard cond` / `guard x is Pattern` with no `else` panics at runtime when the condition fails; treat it with the same severity as `abort`. Default to `guard ... else { ... }` with an early return, typed error, or fallback. In tests too: prefer raising via `guard ... else { fail("...") }` over panicking.
+- **Do not write `guard` without `else` — or its explicit spelling `guard!` — without user approval** — `guard cond` / `guard x is Pattern` with no `else` panics at runtime when the condition fails; newer toolchains warn (`guard_inexhaustive`, 0087) and suggest `guard!`, which panics identically but states the intent. The panic is NOT a raised error — it bypasses `catch` and error types entirely. Treat both like `abort`. Default to `guard ... else { ... }` with an early return, typed error, or fallback. In tests too: prefer raising via `guard ... else { fail("...") }` over panicking. See "guard without else" in `references/language.md`.
 - **Test failure priority: re-raise > `fail` > never `abort`** — in tests, prefer letting the error propagate (the test fails with the actual error); use `fail(...)` only when propagation is impossible; never `abort` in a test.
 - **Don't `match` an Option** — use `x.unwrap_or(...)` (and friends) for trivial defaults, `if x is Some(v) { ... } else { ... }` for branching (chain it with related boolean conditions when that removes a nested `match` without hiding behavior), or `guard x is Some(v) else { ... }` for early exit. Reserve `match` for enums with several meaningful arms.
 - **Don't encode absence or failure as sentinel values (`""`, `-1`, empty array)** — model it in the type. A function that can come up empty returns `T?` (or raises a typed `suberror`), never `""`; a field that starts unset is `String?`, not `String` initialized to `""`; an optional param whose absence matters downstream is `arg? : T?`, never `arg? : String = ""` re-detected with `== ""` later. `unwrap_or("")` is legitimate only at the last step before display/serialization — never mid-pipeline. `catch { _ => "" }` swallows the error AND corrupts the domain. Litmus test: if any code branches on `== ""` / `.is_empty()` to mean "present or not", the type should have been `T?`. Boundary validation that rejects empty input (`guard name.trim() != "" else { raise ... }`) is fine — that rejects bad data rather than encoding absence. See "Modeling absence" in `references/types.md`.
@@ -270,7 +274,7 @@ my_module
 - **Don't manually forward optional arguments by branching on `Some`/`None`** — if both caller and callee use `arg? : T`, pass it through as `arg?`; do not write two calls like `if arg is Some(arg) { f(arg~) } else { f() }`.
 - **Prefer range `for` loops** over C-style — `for i in 0..<(n-1) {...}` and `for j in 0..=6 {...}` are more idiomatic
 - **Don't use `for { ... }` for infinite loops** — write `for ;; { ... }` instead
-- **Don't `derive(Show)` for debugging** — derive `Debug` and use `debug_inspect()` for test/diagnostic output (`\{to_repr(value)}` for interpolation of composed values). Reserve a manual `impl Show` for specialized display formats (JSON, XML, domain text)
+- **Don't `derive(Show)` for debugging** — derive `Debug` and use `debug_inspect()` for test/diagnostic output (`\{Repr(value)}` for interpolation of composed values; the free function `to_repr(x)` is deprecated in favor of `Repr(x)`). Reserve a manual `impl Show` for specialized display formats (JSON, XML, domain text)
 - **Don't call `@json.inspect()`** — use the prelude `json_inspect(value, ...)` without a package prefix
 - **Async** — MoonBit has no `await` keyword; do not add it. Async functions/tests are marked with the `async` prefix (e.g. `[pub] async fn ...`, `async test ...`). Async functions default to raising, so do not add `raise`; add `noraise` only when the async body must not raise.
 - **No `finally`** in MoonBit — use `defer expr` / `defer { ... }` for scope-exit cleanup (runs on normal exit and when an error propagates); see `references/control-flow.md`
@@ -283,6 +287,7 @@ my_module
 - **Postfix `catch` can't be a bare scrutinee** — `match f() catch { ... } { ... }` is a parse error; wrap in parentheses or bind with `let` first.
 - **Don't use deprecated `Json` accessors** (`.value(key)`, `.as_string()`, ...) — pattern-match instead: `if json is Object(obj) { obj.get(key) }`, `if json is String(s) { ... }`.
 - **`#valtype` has hard limits** (currently ≤6 fields, no `mut` fields, no abstract-type fields, no nested value types — limits may be relaxed in future compiler releases) — check `references/valtype.md` before annotating.
+- **Sorting strings is NOT dictionary order** — `String::compare` (so `<`, `sort()`, string-keyed ordering) compares **length first**, then content: `"b" < "aa"` is `true`, and `["b", "aa", "a"].sort()` gives `["a", "b", "aa"]`. Silent wrong results, never a compile error. Details and the dictionary-order workaround in `references/strings-regex.md`; if a test only means "these are the elements", assert membership + length instead of sorting.
 - **Search core before hand-rolling utilities** — case-insensitive compare is `equal_ignore_ascii_case`, substring scan is `String::contains_any`, clamping is `Int::clamp`, String↔Bytes is `moonbitlang/core/encoding/utf8`, CLI parsing is `@argparse` (stdlib — see `references/cli.md`; never hand-roll an argv loop). If it feels like a common utility, look it up first (see API Lookup Rule).
 - **Don't assert performance conclusions without measuring** — no "this is faster/slower" claims without a benchmark or profile run; propose the measurement first (see `references/optimization.md`).
 

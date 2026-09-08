@@ -1,6 +1,6 @@
 # MoonBit Control Flow
 
-Expressions-as-values, range/functional `for` loops, the functional `loop`, `while` as an expression, and labelled loops. Split out of `language.md`.
+Expressions-as-values, range/functional `for` loops, the functional `loop`, `while` as an expression, and labelled loops/blocks. Split out of `language.md`.
 
 ## Control flow
 
@@ -200,6 +200,52 @@ test "labelled break" {
   assert_eq(seen, 2)
 }
 ```
+
+### Labelled blocks
+
+A plain `{ ... }` block can carry a label too: `label~: { ... }` is an
+expression, and `break label~ value` exits the block immediately with `value`
+as its result (`break label~` with no value exits with `Unit`). The block's
+last expression is the normal result; every `break label~` and the final
+expression must agree on type. This is early-exit-with-value without a helper
+function — like Rust's label-break-value or Zig's labelled blocks:
+
+```mbt check
+///|
+fn absolute(n : Int) -> Int {
+  result~: {
+    if n < 0 {
+      break result~ -n // early exit: -n becomes the block's value
+    }
+    n // normal exit: last expression
+  }
+}
+
+///|
+test "labelled block" {
+  assert_eq(absolute(-5), 5)
+  // the break may cross intervening loops:
+  let found : Int? = search~: {
+    for i in 0..<10 {
+      for j in 0..<10 {
+        if i * j == 12 {
+          break search~ Some(i * 10 + j)
+        }
+      }
+    }
+    None
+  }
+  assert_eq(found, Some(26))
+}
+```
+
+Rules:
+- `continue label~` cannot target a block label — compile error 4112 ("Use
+  `break label~` to exit this block"). `continue` is for loop labels only.
+- A declared-but-never-broken block label warns (`unused_block_label`, 0037)
+  — remove the label rather than suppressing the warning.
+- As with labelled loops, keep the trailing `~` on both ends: `break label`
+  without `~` is parsed as breaking with the *value* `label`.
 
 ## `defer` — scope-exit cleanup
 

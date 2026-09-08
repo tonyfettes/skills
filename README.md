@@ -8,6 +8,7 @@ A collection of [Agent Skills](https://github.com/vercel-labs/skills) for Claude
 |-------|-------------|
 | [moonbit](./moonbit/SKILL.md) | Authoritative MoonBit reference — syntax, project layout, `moon` tooling, C FFI, `.mbtx` scripting. Load before writing any MoonBit code. |
 | [rabbita](./rabbita/SKILL.md) | Rabbita (Elm-architecture MoonBit web framework) — pure `update`/`view` rules, effect-package design, model/state-enum design, purity testing. |
+| [web-fetch](./web-fetch/SKILL.md) | Fetch a URL's readable content (title + main text, optionally links) via `moonx tonyfettes/skills-web-fetch` — pure-MoonBit async HTTP + WHATWG html parser. Static/SSR pages and JSON/text APIs; not for client-side-only pages. |
 
 ## Installation
 

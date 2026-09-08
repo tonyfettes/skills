@@ -292,7 +292,7 @@ Most types can auto-derive standard traits with `derive(...)`:
 
 | Trait | Enables |
 |---|---|
-| `Debug` | `debug_inspect()` for structural test/diagnostic output — the derivable default for your own data types. For interpolation of composed values use `\{to_repr(value)}` |
+| `Debug` | `debug_inspect()` for structural test/diagnostic output — the derivable default for your own data types. For interpolation of composed values use `\{Repr(value)}` (`to_repr` is its deprecated old name) |
 | `Show` | Specialized display strings (JSON, XML, user-facing text). Deriving it for debugging is deprecated in favor of `Debug`; write a manual `impl Show for T with output(self, logger) { ... }` only for genuine display formats |
 | `Eq` | `==`, `!=` |
 | `Compare` | `<`, `>`, `<=`, `>=` |

@@ -139,21 +139,32 @@ When branches do have real logic, still don't `match` an Option — use
 `guard x is Some(v) else { ... }` for early exit. Reserve `match` for enums
 with several meaningful arms.
 
-### `guard` without `else` panics
+### `guard` without `else` panics; `guard!` is the explicit spelling
 
 `guard cond` / `guard x is Pattern` with **no `else`** panics at runtime when
 the condition fails. Treat it with the same severity as `abort`: do not
 introduce it without explicit user confirmation. Default to writing the `else`
-branch — early return, typed error, or fallback value:
+branch — early return, typed error, or fallback value.
+
+Newer toolchains (observed on moonc v0.10.7-nightly 2026-08-12) warn on a bare
+`guard` the compiler cannot prove exhaustive (`guard_inexhaustive`, warning
+0087) and suggest either adding `else { ... }` or writing `guard!` when the
+panic is intended. `guard! cond` / `guard! x is Pattern` behaves exactly like
+the bare form at runtime — the failure is a **panic, not a raised error**: it
+bypasses `catch` and the function's error type entirely (verified: a
+surrounding `try`/`catch` does not catch it and gets an `unused_try` warning).
+So `guard!` needs the same user sign-off as `abort`; it is for genuine
+invariants, never for expected failure paths:
 
 ```mbt nocheck
 guard queue.pop() is Some(job) else { return }   // ✓ explicit failure path
-guard queue.pop() is Some(job)                   // ✗ panics if empty — needs user sign-off
+guard! queue.pop() is Some(job)                  // ✗ panics if empty — needs user sign-off
+guard queue.pop() is Some(job)                   // ✗ same panic, plus warning 0087
 ```
 
 This applies **in tests too** — prefer raising over panicking, e.g.
-`guard parsed is Some(v) else { fail("parse failed: \{input}") }`, not a bare
-`guard parsed is Some(v)`.
+`guard parsed is Some(v) else { fail("parse failed: \{input}") }`, not
+`guard! parsed is Some(v)`.
 
 ### String indexing is UTF-16; slicing can crash
 
@@ -392,7 +403,7 @@ fn g(
   let _ : Int = required
   let _ : Int? = optional
   let _ : Int = optional_with_default
-  "\{positional},\{required},\{to_repr(optional)},\{optional_with_default}"
+  "\{positional},\{required},\{Repr(optional)},\{optional_with_default}"
 }
 
 ///|
@@ -408,7 +419,7 @@ test {
 ```mbt check
 ///|
 fn with_config(a : Int?, b : Int?, c : Int) -> String {
-  "\{to_repr(a)},\{to_repr(b)},\{c}"
+  "\{Repr(a)},\{Repr(b)},\{c}"
 }
 
 ///|
