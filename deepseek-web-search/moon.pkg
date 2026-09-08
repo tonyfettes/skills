@@ -1,0 +1,12 @@
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/stdio",
+  "moonbitlang/core/env",
+  "moonbitlang/core/string",
+  "moonbitlang/x/sys",
+  "tonyfettes/skills-deepseek-web-search/internal/search",
+}
+
+pkgtype(kind: "executable")
+
+supported_targets = "+wasm+native"

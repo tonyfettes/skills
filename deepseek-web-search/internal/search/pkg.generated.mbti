@@ -1,0 +1,55 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "tonyfettes/skills-deepseek-web-search/internal/search"
+
+// Values
+pub const AnthropicVersion : String = "2023-06-01"
+
+pub const DefaultBaseUrl : String = "https://api.deepseek.com/anthropic/v1"
+
+pub const DefaultMaxResults : Int = 8
+
+pub const DefaultMaxTokens : Int = 4096
+
+pub const DefaultMaxUses : Int = 5
+
+pub const DefaultSearchModel : String = "deepseek-v4-flash"
+
+pub const DefaultTimeoutMs : Int = 120_000
+
+pub const MaxQueryChars : Int = 2_000
+
+pub fn cap_line(String, Int) -> String
+
+pub fn error_detail(String) -> String
+
+pub fn format_output(SearchOutcome) -> String
+
+pub fn host_label(String) -> String
+
+pub fn markdown_label(String) -> String
+
+pub fn parse_search_response(Json, max_results~ : Int) -> SearchOutcome raise
+
+pub async fn perform_search(api_key~ : String, base_url? : String, model? : String, max_results? : Int, max_uses? : Int, max_tokens? : Int, timeout_ms? : Int, String) -> SearchOutcome
+
+// Errors
+pub suberror SearchFailure {
+  SearchFailure(String)
+}
+
+// Types and methods
+pub struct SearchOutcome {
+  sources : Array[WebSource]
+  truncated : Bool
+}
+
+pub struct WebSource {
+  url : String
+  title : String?
+  snippet : String?
+  published_at : String?
+}
+
+// Type aliases
+
+// Traits
