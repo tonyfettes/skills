@@ -65,6 +65,35 @@ If a spawned task fails without `allow_failure=true`, peer tasks are cancelled
 and the error propagates. Cancelled tasks do not trigger peer cancellation by
 themselves.
 
+### Resource ownership in `no_wait` tasks
+
+`no_wait=true` does not detach a child task. It only lets the task group's main
+body finish without waiting for that child to finish normally. The group then
+cancels the still-running child and still waits for it to terminate before
+`with_task_group` returns.
+
+If a child blocks on a resource such as a listening socket, pipe endpoint, or
+queue, put the cleanup that unblocks it in the child that owns the blocking
+operation. Register the `defer` at the start of the spawned closure:
+
+```mbt nocheck
+@async.with_task_group() <| group => {
+  let server = make_server()
+  group.spawn_bg(no_wait=true) <| () => {
+    defer server.close()
+    server.run_forever(handler)
+  }
+  exercise(server.addr)
+}
+```
+
+Do not rely only on a `defer server.close()` in the surrounding task-group body,
+or on `group.add_defer`, when closing the resource is required for the child to
+terminate. Both run too late: the group first waits for every child to terminate,
+which can produce a shutdown hang. A synchronous `close` belongs in the owner
+task's plain `defer`; for async cleanup, follow the cancellation-protection and
+hard-timeout rules below.
+
 For `spawn_bg` / `spawn` closures, use `() => { ... }` or `async fn() { ... }`.
 Avoid `fn() { ... }` because it triggers deprecated async syntax warnings.
 Forms like `async () => ...`, `fn() async { ... }`, and `fn(args) async { ... }`
