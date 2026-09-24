@@ -94,6 +94,10 @@ which can produce a shutdown hang. A synchronous `close` belongs in the owner
 task's plain `defer`; for async cleanup, follow the cancellation-protection and
 hard-timeout rules below.
 
+`close()` on a `ServerConnection`, a listener, and the underlying `IoHandle`
+is idempotent: one `defer x.close()` at the top of the owning task is the whole
+cleanup, and an explicit `close()` before it is noise.
+
 For `spawn_bg` / `spawn` closures, use `() => { ... }` or `async fn() { ... }`.
 Avoid `fn() { ... }` because it triggers deprecated async syntax warnings.
 Forms like `async () => ...`, `fn() async { ... }`, and `fn(args) async { ... }`
@@ -154,6 +158,39 @@ production review:
   `TimeoutError` masks the real failure.
 
 (`defer` semantics and syntax: `control-flow.md`.)
+
+## Timeouts
+
+`@async.with_timeout(ms, () => ...)` raises `TimeoutError` when the deadline
+passes; `with_timeout_opt` returns `None` instead. When a timeout is a failure
+of the operation, use the raising form so it flows through the same `catch`
+as every other transport error rather than becoming a second branch.
+
+## One-shot HTTP requests (`@http`)
+
+`@http.get/post/put/request(url, ...)` perform one request, read the whole
+body, close the client, and return `(Response, &@io.Data)`; they do not follow
+redirects. Reach for `Client` only to stream a body.
+
+```mbt nocheck
+let (response, body) = @http.post("\{origin}/v1/shares", bytes, headers={
+  "Authorization": "Bearer \{token}",
+  "Content-Type": "multipart/form-data; boundary=\{key}",
+})
+if response.code == 401 { return SignInRequired }
+try body.json() catch { _ => Failed(...) } noraise {
+  { "url": String(url), .. } => Shared(url~)
+  _ => Failed(...)
+}
+```
+
+`&@io.Data` decodes on demand: `.json()`, `.text()` (both raise), `.binary()`.
+There is no `@json.parse(@utf8.decode(bytes))` step.
+
+On a `Client`, `read(buf, max_len~)` is a *short* read: it returns whatever is
+immediately available, possibly less than `max_len`. A bounded read of a whole
+body is a `read_some` loop into a `Buffer` with a size guard; `read_all()`
+has no bound.
 
 ## Spawning subprocesses (`@process`)
 

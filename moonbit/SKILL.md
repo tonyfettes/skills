@@ -14,7 +14,10 @@ v0.10.4, released 2026-07-13; skill last updated 2026-08-18). Spot-updates
 validated on moonc v0.10.7-nightly (2026-08-12): `guard!` semantics
 (`references/language.md`) and the `to_repr(x)` → `Repr(x)` deprecation.
 Labelled blocks (`references/control-flow.md`) validated on moonc v0.10.8
-(2026-08-18).
+(2026-08-18). Spot-updates validated on moonc v0.10.13 / async 0.21.2
+(2026-09-16): `pub extend` for `Show`/`Debug` impls, `clamped_view`
+truncation, one-shot `@http` requests (`references/errors.md`, `language.md`,
+`async.md`).
 
 **Assume the toolchain is v0.10.4** and follow this skill's guidance as-is —
 do not preemptively run `moon version` or second-guess the references. Deviate
@@ -36,12 +39,12 @@ Load the reference matching your current work BEFORE writing code:
 
 | Task | Read |
 |---|---|
-| Writing MoonBit syntax — core (gotchas, primitives/`BigInt`, constants, options, label/optional params, `letrec`, autofill `SourceLoc`) | `references/language.md` |
+| Writing MoonBit syntax — core (gotchas, primitives/`BigInt`, constants, options, label/optional params, `letrec`, autofill `SourceLoc`, `clamped_view` truncation and UTF-8 byte bounds, ambiguous constructor names) | `references/language.md` |
 | Defining types (structs/enums/newtypes, custom constructors, `extenum`, derive) + visibility + pattern matching | `references/types.md` |
 | Strings, `StringView`, UTF-16 safety, interpolation (`<+`/`<?`), regex (`re"..."`, `=~`) | `references/strings-regex.md` |
 | Arrays, `Map`, view types, spread `..x`, `Iter`/`iter()` protocol | `references/collections.md` |
 | `Bytes`, byte containers (`Buffer()`), `BytesView`, bitstring patterns (binary parsing) | `references/bytes.md` |
-| Error handling (`suberror`, `raise`/`catch`/`noraise`, `raise?`, `try`) | `references/errors.md` |
+| Error handling (`suberror`, `raise`/`catch`/`noraise`, `raise?`, `try`; variant suberrors with `Show` text, expected-failure tests, parse-or-mismatch in `noraise`) | `references/errors.md` |
 | Loops and control flow (`for`, functional `loop`, `while`/`nobreak`, labelled loops/blocks, pipe operators, loop invariants, `defer`) | `references/control-flow.md` |
 | Methods, traits, trait objects (`&Trait`), trait/impl visibility, dot-resolution rules, operator overloading, indexing operators (`#alias`) | `references/traits-methods.md` |
 | Configuring `derive(...)` — JSON enum styles, rename rules, container/case/field args | `references/derive.md` |
@@ -55,7 +58,7 @@ Load the reference matching your current work BEFORE writing code:
 | Optimizing data layout with `#valtype` (unboxing, flat arrays, value enums, the visibility interaction) | `references/valtype.md` |
 | Optimizing hot-path code on the native backend (refcount traffic, polymorphic `Eq` on enums, cross-package inlining, reading generated C/asm, `moon tool demangle` for `_M0...` symbols) | `references/optimization.md` |
 | SIMD with the experimental `V128` type (`@v128` lane ops, wasm SIMD128 mirror) | `references/optimization.md` |
-| Async IO (`moonbitlang/async` setup, `with_task_group`, async tests, cancellation-safe cleanup, backpressure) | `references/async.md` |
+| Async IO (`moonbitlang/async` setup, `with_task_group`, async tests, cancellation-safe cleanup, backpressure, timeouts, one-shot `@http` requests) | `references/async.md` |
 | Writing tests (snapshot `inspect` family, black-box defaults, docstring tests, `@test.T::snapshot`, error assertions) | `references/testing.md` |
 | Measuring performance (`@bench.T` benchmarks, native `--profile`, before/after methodology) | `references/optimization.md` |
 | Code navigation with `moon ide` (outline/peek-def/find-references/rename/hover/doc/workspace-symbols), API-shrinkage planning with `moon ide analyze` (dependent usage counts; mixed-target + path-filter gotchas) | `references/moon-ide.md` |
@@ -81,6 +84,7 @@ Mined from real session history; these caused the most compiler pushback by far:
 8. **"does not implement trait Show/Eq" means a missing derive** — `==` / `!=` needs `derive(Eq)`; interpolation `\{x}` needs `Show` (or use `\{Repr(x)}` for debug-only display; `to_repr(x)` is its deprecated old name). Check derives before writing comparisons on new enums/structs; this is the single most common type error in real sessions.
 9. **In a workspace mixing js/native modules, bare `moon check/test/build/info` defaults to wasm-gc and fails** — always pass `--target js|native` (run both for shared packages). And never run `moon info --target X` to refresh `.mbti` in a multi-target package: it rewrites `pkg.generated.mbti` to that target's specialized surface — regenerate with default-target `moon info` and revert such diffs.
 10. **Native `String` and `Bytes` are NUL-terminated by the runtime.** `String` has a trailing UTF-16 zero code unit and `Bytes` has a trailing zero byte; `length()` excludes that sentinel. At C FFI boundaries, pass UTF-8 strings as `@utf8.encode(s)` for `const char *` — do not hand-roll conversion loops or append an extra `\0` unless the NUL is part of the logical payload. Read `references/ffi/c.md` before editing `extern "c"` bindings, C stubs, or `char *` call sites.
+11. **A manual `impl Show for T` or `derive(Debug)` needs a matching `pub extend T with Show::{to_string, output}` / `pub extend T with @debug.Debug::{to_repr}` line** on moonc ≥ 0.10.13, or the compiler warns `implicit_impl_as_method` (0079). Write the `extend` line with the impl (`references/errors.md`).
 
 ## API Lookup Rule
 

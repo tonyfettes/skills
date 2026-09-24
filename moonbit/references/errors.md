@@ -86,7 +86,64 @@ fn handle_parse(s : String, position~ : Position) -> Int {
 }
 ```
 
+A test that expects a *specific* failure matches the variant in `catch` and
+fails in `noraise`. That pins which error fired; wrapping the call as
+`Ok(f()) catch { e => Err(e) }` and asserting `is Err(_)` pins nothing:
+
+```mbt nocheck
+try Snapshot(title="  ", html="<html/>", json="{}") catch {
+  EmptyTitle => ()
+  error => raise error
+} noraise {
+  _ => fail("a blank title must be refused")
+}
+```
+
 All `async` functions can raise errors without explicitly stating `raise`.
+
+### Variant suberrors carry their display text in `Show`
+
+Model the distinct refusals as payload-free variants and put the user-facing
+text in one `impl Show`; callers match the variant and render `"\{error}"`.
+A string-carrying `E(String)` forces every caller to parse prose.
+
+```mbt nocheck
+///|
+pub(all) suberror ShareError {
+  EmptyTitle
+  Oversized
+}
+
+///|
+pub impl Show for ShareError with output(self, logger) {
+  logger.write_string(
+    match self {
+      EmptyTitle => "The conversation title must not be empty."
+      Oversized => "This export exceeds the 20 MiB share limit."
+    },
+  )
+}
+
+///|
+pub extend ShareError with Show::{to_string, output}
+```
+
+The trailing `pub extend` line is required on moonc ≥ 0.10.13: without it the
+compiler warns `implicit_impl_as_method` (0079) that `to_string`/`output` are
+being promoted to methods implicitly. `derive(Debug)` on a suberror needs the
+same treatment (`pub extend E with @debug.Debug::{to_repr}`), so derive it
+only when something inspects the error.
+
+Binding several variants in a `catch` gives an `Error`, and interpolation
+still reaches the suberror's `Show`:
+
+```mbt nocheck
+} catch {
+  error if @async.is_being_cancelled() => raise error
+  (@shares.EmptyTitle | @shares.Oversized) as refusal =>
+    Failed(message="\{refusal}")
+}
+```
 
 ### Error polymorphism: `raise?` and `noraise`
 
@@ -143,5 +200,22 @@ try {
   E1(_) => ...
   E2    => ...
   e     => raise e                    // re-raise anything else
+}
+```
+
+### Parse-or-mismatch: pattern arms in `noraise`
+
+When a raising call and a pattern miss on its result lead to the same outcome,
+put the pattern arms in `noraise` and the raise in `catch`; the pair reads as
+one decision and needs no placeholder value (`Json::null()`, `Option`) to
+carry "it did not parse" across to a later `match`:
+
+```mbt nocheck
+let invalid = "The share server did not return a valid share link."
+try body.json() catch {
+  _ => Failed(message=invalid)
+} noraise {
+  { "url": String(url), .. } => Shared(url~)
+  _ => Failed(message=invalid)
 }
 ```

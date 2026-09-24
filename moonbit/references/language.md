@@ -123,6 +123,17 @@ const PI : Double = 3.14159                              // ✓ also common: UPP
 // let default_scopes : Array[String] = [...]            // ✗ outdated for new code
 ```
 
+### Shared constructor names need the type when nothing infers it
+
+Two enums in one package may both have a `Failed` variant. Where the expected
+type is known (a `return`, a match arm, a typed `let`) the bare constructor
+resolves; in an untyped `let` it is error 4124 *ambiguous*, so qualify with
+the type:
+
+```mbt nocheck
+let invalid = @protocol.SessionShareReply::Failed(message="...")   // not @protocol.Failed(...)
+```
+
 ### Prefer `unwrap_or` over `match Some/None`
 
 ```mbt nocheck
@@ -193,15 +204,20 @@ Prefer these patterns instead:
 
 Do not default to `[]` indexing or `[:]` slicing for user text.
 
-**Safe string truncation** — do NOT use `str[:N]` / `str.substring(end=N)` (both abort on surrogate pairs):
+**Safe string truncation** is `clamped_view`: it clamps the range to the
+string and snaps to a character boundary, so a surrogate pair is dropped whole
+rather than split (`s[:N]` and `substring(end=N)` abort there):
 
 ```mbt nocheck
-if !text.char_length_ge(max + 1) { return text }
-if text.offset_of_nth_char(max) is Some(offset) {
-  text.view(end_offset=offset).to_string() + "..."
-} else {
-  text
-}
+let short = text.clamped_view(end=max).to_owned()      // at most one char shorter than max
+```
+
+To bound text by an external **UTF-8 byte** limit, clamp UTF-16 units to a
+third of it: every code unit encodes to at most three bytes, so the result
+can never exceed the limit, with no per-character byte counting:
+
+```mbt nocheck
+let title = title.trim().clamped_view(end=1024 / 3).to_owned()   // ≤ 1024 UTF-8 bytes
 ```
 
 ### `trim`/slicing return `StringView`, not `String`
