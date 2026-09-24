@@ -2,6 +2,12 @@
 
 **Every update handler MUST have tests. Every test MUST verify purity.**
 
+Keep `update` a top-level function of shape
+`(Model, Msg, Emit[Msg]) -> (Model, Cmd)` and pass it as `update~` to
+`create_state` inside the component; an inline closure cannot be called from a
+test. (Pre-0.16 code used `(Emit, Msg, Model) -> (Cmd, Model)`; the examples
+below use the 0.16 order.)
+
 Purity means two things — both must be tested:
 
 1. **Idempotence**: calling update twice on the same input produces the same model output
@@ -15,8 +21,8 @@ A pure function called twice with the same input MUST produce the same output. T
 test "update is pure: ToggleTerminal is idempotent" {
   let model = { ..test_model(), term_state: Open(@xterm.Terminal::dummy()) }
   let emit = test_emit()
-  let (_, result1) = update(emit, ToggleTerminal, model)
-  let (_, result2) = update(emit, ToggleTerminal, model)
+  let (result1, _) = update(model, ToggleTerminal, emit)
+  let (result2, _) = update(model, ToggleTerminal, emit)
   // Same input, same output — always.
   // Plain-data fields: two computed values → @debug.assert_eq (per the moonbit skill).
   @debug.assert_eq(result1.terminal_height, result2.terminal_height)
@@ -38,9 +44,9 @@ test "update is pure: terminal messages produce no direct side effects" {
   let emit = test_emit()
   let base = { ..test_model(), term_state: Open(term) }
   // Every one of these would throw if update called a method directly:
-  let (_, _) = update(emit, ToggleTerminal, base)
-  let (_, _) = update(emit, Xterm(@xterm.Resize(cols=80, rows=24)), base)
-  let (_, _) = update(emit, DragEnd, base)
+  let (_, _) = update(base, ToggleTerminal, emit)
+  let (_, _) = update(base, Xterm(@xterm.Resize(cols=80, rows=24)), emit)
+  let (_, _) = update(base, DragEnd, emit)
 }
 ```
 
@@ -53,16 +59,16 @@ test "ToggleTerminal transitions" {
   let term = @xterm.Terminal::dummy()
   let emit = test_emit()
   // Closed -> Mounting
-  let (_, m) = update(emit, ToggleTerminal, { ..test_model(), term_state: Closed })
+  let (m, _) = update({ ..test_model(), term_state: Closed }, ToggleTerminal, emit)
   assert_true(m.term_state is Mounting)
   // Open -> Hidden
-  let (_, m) = update(emit, ToggleTerminal, { ..test_model(), term_state: Open(term) })
+  let (m, _) = update({ ..test_model(), term_state: Open(term) }, ToggleTerminal, emit)
   assert_true(m.term_state is Hidden(_))
   // Hidden -> Open
-  let (_, m) = update(emit, ToggleTerminal, { ..test_model(), term_state: Hidden(term) })
+  let (m, _) = update({ ..test_model(), term_state: Hidden(term) }, ToggleTerminal, emit)
   assert_true(m.term_state is Open(_))
   // Mounting -> Mounting (no-op)
-  let (_, m) = update(emit, ToggleTerminal, { ..test_model(), term_state: Mounting })
+  let (m, _) = update({ ..test_model(), term_state: Mounting }, ToggleTerminal, emit)
   assert_true(m.term_state is Mounting)
 }
 ```
@@ -85,8 +91,12 @@ constructed directly. `Dispatch` is the deprecated old name.)
 
 ## What NOT to test in unit tests
 
-- Commands (Cmd is opaque — you can't inspect the closure)
-- View functions (need real DOM)
+- Commands. `Cmd` implements `Debug` on 0.16 (`debug_inspect(cmd)` prints
+  built-in commands such as `ClipboardCopy(Text("hello"))` and batches), but
+  that impl is `#internal(experimental)` and a `custom_cmd` closure prints as
+  omitted — assert the model, not the command.
+- View functions (need real DOM; the SSR `App::render` is
+  `#cfg(not(target="js"))`, so it is unavailable in js test builds)
 - Subscriptions (need runtime)
 
 Focus tests on: **model output**, **idempotence**, and **no-throw with dummies**.

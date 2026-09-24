@@ -1,5 +1,20 @@
 # Model Design
 
+## Rule: The model implements `Eq`, and `Eq` must see every change
+
+`create_state`, `create_pure_state`, `create_variable`, and every `Val::map`
+input are bounded by `Eq` (0.16). The runtime compares the new model with the
+old one and stops propagation when they are equal, so:
+
+- `derive(Eq)` on the model and every type nested in it.
+- Never mutate a model value in place — an in-place change leaves the old
+  snapshot equal to the new one and the view never reruns.
+- A field holding a JS handle (`@js.Value` has no `Eq`) needs a hand-written
+  `impl Eq` for the wrapper: compare by a generation/id you assign when the
+  handle is created, or wrap the handle in a state enum whose payload is
+  compared by identity. Do not derive `Eq` on a struct that only exists to
+  make tests compile.
+
 ## Rule: The model holds plain data only
 
 Never store these in a model field (or a global):
@@ -13,12 +28,12 @@ Routing state is also not yours to encode by hand: map the URL into the model vi
 
 ## Rule: Collections in the model MUST be immutable
 
-Use `@vec.Vector[T]` (from `moonbitlang/core/immut/vector`), never `Array[T]`. `Array[T]` is mutable — a handler could accidentally mutate it, breaking idempotence and letting stale references in prior model snapshots change underfoot.
+Use `@vector.Vector[T]` (from `moonbitlang/core/immut/vector`), never `Array[T]`. `Array[T]` is mutable — a handler could accidentally mutate it, breaking idempotence, letting stale references in prior model snapshots change underfoot, and hiding the change from `Eq` so the view never reruns. `Vector` is also what `Val::assoc` / `assoc_by` take for keyed child components.
 
 ```moonbit
 // moon.pkg
 import {
-  "moonbitlang/core/immut/vector" @vec,
+  "moonbitlang/core/immut/vector",
 }
 ```
 
@@ -27,16 +42,16 @@ import {
 struct Model {
   servers : Array[ServerEntry]
   threads : Array[Thread]
-}
+} derive(Eq)
 
 // GOOD — immutable persistent vector
 struct Model {
-  servers : @vec.Vector[ServerEntry]
-  threads : @vec.Vector[Thread]
-}
+  servers : @vector.Vector[ServerEntry]
+  threads : @vector.Vector[Thread]
+} derive(Eq)
 ```
 
-Use `@vec.Vector::push`, `set`, `concat`, etc. — they return a new Vector. The old model snapshot is never mutated.
+Use `@vector.Vector::push`, `set`, `filter`, `map`, etc. — they return a new Vector. The old model snapshot is never mutated.
 
 The same rule applies to maps and sets: prefer `@immut/hashmap`, `@immut/sorted_map`, `@immut/sorted_set` over their mutable counterparts. (Upstream examples sometimes keep `Array[T]` but copy on every change — `xs.copy()` then push/insert; that discipline is acceptable, but a persistent structure makes the invariant unforgeable.)
 
@@ -104,10 +119,10 @@ fn TermState::is_visible(self : TermState) -> Bool {
 ```moonbit
 ToggleTerminal => {
   match model.term_state {
-    Closed => (mount_cmd, { ..model, term_state: Mounting })
-    Mounting => (@rabbita.none, model)  // already in progress
-    Open(term) => (@rabbita.none, { ..model, term_state: Hidden(term) })
-    Hidden(term) => (fit_cmd, { ..model, term_state: Open(term) })
+    Closed => ({ ..model, term_state: Mounting }, mount_cmd)
+    Mounting => (model, @rabbita.none)  // already in progress
+    Open(term) => ({ ..model, term_state: Hidden(term) }, @rabbita.none)
+    Hidden(term) => ({ ..model, term_state: Open(term) }, fit_cmd)
   }
 }
 ```

@@ -24,7 +24,7 @@ Adding any **new** `extern "js"` body requires the user's explicit approval firs
 - **Storing a `Request` or `Cmd`** in a global, the Model, or any data structure. Construct commands fresh in update.
 - **Embedding logic in the emit callback**: `expect_empty(r => emit(Status(r.is_none())))` hides a decision in a closure. Carry the raw payload (`emit.map(r => Deleted(r))`) and decide in update.
 - **Wrapping a one-line request in a helper function** (`fn fetch_user(emit) -> Cmd { @http.get(...).expect_json(...) }`) — inline it at the use site. (Helpers that bundle several arguments from the model, as in multi-argument `@websocket.connect` calls, are fine.)
-- **Awaiting JS promises with `moonbitlang/async/js_async.Promise::wait` inside a Cmd** — Rabbita commands run on Rabbita's own JS async runtime; mixing runtimes can resume before the promise settles and panics. Always use the `Promise` type from `moonbit-community/rabbita/js` inside Rabbita FFI packages.
+- **Awaiting a promise on a foreign async runtime inside a Cmd.** Since Rabbita moved onto `moonbitlang/async`, `@js.Promise` from `moonbit-community/rabbita/js` is a type alias of `@js_async.Promise`, so `.wait()` and `@js.Promise::from_async(...)` are the sanctioned way to bridge; anything that spins its own scheduler or event loop is not. (Pre-0.15 pins had a separate Rabbita runtime where mixing the two panicked — if the project pins one of those, keep everything on `@rabbita/js`.)
 
 # Hand-Written FFI Package Design
 
@@ -98,33 +98,36 @@ on the same model can produce different results. Idempotence is silently broken.
 Two fix patterns, depending on how the value changes:
 
 **Stable for the app's lifetime** (origin, initial viewport, locale, build version):
-read once in `main` while constructing the initial model, reference via `model.foo`.
+read once while constructing the initial model — in the component body, which
+runs exactly once at mount — and reference via `model.foo`.
 
 ```moonbit
+fn app() -> Val[Html] {
+  let init = {
+    origin: get_origin(),
+    viewport_width: js_inner_width(),
+    viewport_height: js_inner_height(),
+    // ...
+  }
+  let (model, emit) = @rabbita.create_state(init, update~, subscriptions~)
+  model.view(model => view(model, emit))
+}
+
 fn main {
-  let app = @rabbita.cell(
-    model={
-      origin: get_origin(),
-      viewport_width: js_inner_width(),
-      viewport_height: js_inner_height(),
-      // ...
-    },
-    update~, view~, subscriptions~,
-  )
   @rabbita.new(app).mount("app")
 }
 ```
 
 Then `update` and `view` read `model.origin`, `model.viewport_width`, etc.
-(Use `cell_with_emit` instead of `cell` only when you need the `Emit` outside
-the cell; use `App::with_init(cmd)` to run startup commands.)
+(Use `create_state_with_init(init=emit => (model, cmd), update~)` when a
+startup command must run as well; the old `App::with_init` is gone.)
 
 **Changes over time** (viewport on resize, mouse position, visibility, time):
 subscribe to the event and carry the payload through a message.
 
 ```moonbit
-// subscriptions : (Emit[Msg], Model) -> @sub.Sub
-fn subscriptions(emit : Emit[Msg], _model : Model) -> @sub.Sub {
+// subscriptions : (Model, Emit[Msg]) -> @sub.Sub
+fn subscriptions(_model : Model, emit : Emit[Msg]) -> @sub.Sub {
   @sub.on_resize(emit.map(viewport => WindowResize(viewport)))
 }
 
@@ -133,48 +136,54 @@ WindowResize(@common.Viewport)
 
 // update reads from the payload, never from window.*
 WindowResize(viewport) => (
-  @rabbita.none,
   { ..model, viewport_width: viewport.width, viewport_height: viewport.height },
+  @rabbita.none,
 )
 ```
 
 Either way, `update` and `view` never call an `extern "js"` that reads
-external state. The only DOM reads happen in `main` (which runs once)
-or inside `Cmd` closures and subscription callbacks (which are scheduled by
-the runtime, not called by update).
+external state. The only DOM reads happen in the component body (which runs
+once at mount) or inside `Cmd` closures and subscription callbacks (which are
+scheduled by the runtime, not called by update).
 
 ## Rule: snapshot live DOM collections at the extern boundary
 
-An `extern "js"` that returns `element.children` / `element.childNodes` /
-`getElementsBy*` hands MoonBit a **live** collection even when the binding
-declares `Array[Element]` — rabbita's own `@dom.Element::get_children` does
-exactly this (`(self) => self.children`, `dom/element.mbt`). MoonBit's
-`for x in arr` compiles to length-capture + index access, so mutating the DOM
-inside the loop shifts the live collection under the index:
+`element.children` / `element.childNodes` / `getElementsBy*` are **live**
+collections. Rabbita's own `@dom.Element::get_children` returns the live
+`HTMLCollection` (typed as such since 0.16; older pins mistyped it as
+`Array[Element]`), and `HTMLCollection::iter()` reads `item(index)` lazily
+while you iterate. Mutating the DOM inside the loop shifts the collection under
+the cursor:
 
 ```moonbit
-// BROKEN: each remove shrinks the live collection; past the halfway point
-// children[i] is undefined → "Node.removeChild: Argument 1 is not an object",
-// half the children survive, and every later re-render hits the same throw.
+// BROKEN: each remove shrinks the live collection; the cursor skips every
+// other child, half of them survive, and the next re-render inherits the
+// half-cleared DOM. (Older bindings typed as Array[Element] threw
+// "removeChild: Argument 1 is not an object" instead.)
 for child in parent.get_children() {
   parent.remove_child(child.as_node())
 }
 ```
 
-Fix: snapshot in your own extern before mutating —
+Fix: snapshot before mutating —
 
 ```moonbit
-extern "js" fn children_snapshot(element : @dom.Element) -> Array[@dom.Element] =
-  #| (element) => Array.from(element.children)
+for child in parent.get_children().iter().to_array() {
+  parent.remove_child(child.as_node())
+}
 ```
+
+or, in your own extern, `Array.from(element.children)` and return
+`Array[@dom.Element]`.
 
 A `firstChild`-drain loop is the other correct shape, but don't build it on
 `@dom.Node::get_first_child` — that binding is typed plain `Node` while the DOM
 returns `null` at the end, so it needs your own nullable extern too.
 
 Treat any binding that returns a DOM collection as suspect until you've
-confirmed it snapshots (`Array.from`, spread) rather than passing the live
-object through — and when writing your own, always snapshot.
+confirmed it snapshots (`Array.from`, spread, `.iter().to_array()` before the
+loop) rather than iterating the live object — and when writing your own,
+always snapshot.
 
 ## Closing the loop: commands emit messages back
 
@@ -221,8 +230,8 @@ For every new FFI package:
 - [ ] All public operations return `Cmd`, never `Unit`
 - [ ] Method wrappers (`fn FooHandle::method`) are **not** `pub`
 - [ ] Public API takes `Emit[Msg]` for event wiring; callers adapt with `emit.map`
-- [ ] JS promises awaited via the `moonbit-community/rabbita/js` `Promise`, never `moonbitlang/async/js_async`
-- [ ] Externs returning DOM collections snapshot with `Array.from(...)` — never hand back a live `HTMLCollection`/`NodeList` typed as `Array[T]`
+- [ ] JS promises bridged with `@js.Promise` (`moonbit-community/rabbita/js`, an alias of `@js_async.Promise` on 0.16) via `.wait()` / `Promise::from_async`; no hand-rolled scheduler
+- [ ] Externs returning DOM collections snapshot with `Array.from(...)` — never hand back a live `HTMLCollection`/`NodeList` typed as `Array[T]`; callers of `get_children()` snapshot with `.iter().to_array()` before mutating
 - [ ] DOM-bound widget lifecycle owned by a subscription (unload = dispose) rather than a user-callable `close` Cmd; keyed string-id registries only for non-DOM resources (websocket-style)
 
 This makes it **impossible** for update to call side effects directly — the only public API returns `Cmd`.
@@ -236,6 +245,33 @@ This makes it **impossible** for update to call side effects directly — the on
 | Multiple commands | `@rabbita.batch([cmd1, cmd2])` |
 | Delayed command | `@rabbita.delay(cmd, ms)` |
 | No-op | `@rabbita.none` |
-| Startup command | `@rabbita.new(app).with_init(cmd)` |
+| Startup command | `@rabbita.create_state_with_init(init=emit => (model, cmd), update~)` |
+| Load-once resource | `@rabbita.create_resource(inject => @http.get(url).expect_json(inject))` → `Val[Status[T]]` |
 
-(For async operations, see "Closing the loop" above. `raw_effect` is a deprecated alias of `custom_cmd`.)
+(For async operations, see "Closing the loop" above. `raw_effect` is a
+deprecated alias of `custom_cmd`; `App::with_init` no longer exists.)
+
+`custom_cmd` builds a `LegacyEffect` on top of the `@cmd.Op` / `extenum
+@cmd.Extension` machinery that the built-in packages use (`op.request(...)`
+with `OpCont::Async` / `AfterLayout` / `Ready`). That machinery is
+`#internal(experimental)`; app code stays on `custom_cmd` until it stabilises.
+
+## Custom subscriptions
+
+`@sub.custom_sub(key, scope, payload, loader)` is the subscription-side escape
+hatch (0.16 signature):
+
+- `key : String` identifies the subscription; `scope : Local | Global` decides
+  whether it is shared across components.
+- `payload : Error` carries the current tagger/config as a `suberror` value
+  (`priv suberror MySub { Listen(Emit[Event]) }`), so the runtime can hand
+  the *new* payload to a running subscription instead of tearing it down.
+- `loader : SubLoader((payload, scheduler) -> RunningSub?)` starts the
+  listener and returns `{ unload, update_tagger }`: `unload` removes the
+  listener; `update_tagger` receives the next payload when `subscriptions`
+  re-evaluates with the same key (`guard payload is Listen(next) else { return }`
+  then swap the stored emit).
+- Return `None` on `#cfg(not(target="js"))` builds.
+
+Keep matching/deciding out of the loader: forward the raw event through the
+emit and decide in update.
