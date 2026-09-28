@@ -14,7 +14,8 @@ v0.10.4, released 2026-07-13; skill last updated 2026-08-18). Spot-updates
 validated on moonc v0.10.7-nightly (2026-08-12): `guard!` semantics
 (`references/language.md`) and the `to_repr(x)` → `Repr(x)` deprecation.
 Labelled blocks (`references/control-flow.md`) validated on moonc v0.10.8
-(2026-08-18). Spot-updates validated on moonc v0.10.13 / async 0.21.2
+(2026-08-18). Property-testing guidance (`@quickcheck`, derived `Shrink`) validated on
+moonc v0.10.14 (2026-09-28). Spot-updates validated on moonc v0.10.13 / async 0.21.2
 (2026-09-16): `pub extend` for `Show`/`Debug` impls, `clamped_view`
 truncation, one-shot `@http` requests (`references/errors.md`, `language.md`,
 `async.md`).
@@ -59,7 +60,7 @@ Load the reference matching your current work BEFORE writing code:
 | Optimizing hot-path code on the native backend (refcount traffic, polymorphic `Eq` on enums, cross-package inlining, reading generated C/asm, `moon tool demangle` for `_M0...` symbols) | `references/optimization.md` |
 | SIMD with the experimental `V128` type (`@v128` lane ops, wasm SIMD128 mirror) | `references/optimization.md` |
 | Async IO (`moonbitlang/async` setup, `with_task_group`, async tests, cancellation-safe cleanup, backpressure, timeouts, one-shot `@http` requests) | `references/async.md` |
-| Writing tests (snapshot `inspect` family, black-box defaults, docstring tests, `@test.T::snapshot`, error assertions) | `references/testing.md` |
+| Writing tests (snapshot `inspect` family, black-box defaults, docstring tests, `@test.T::snapshot`, error assertions, `@quickcheck` property tests / custom `Arbitrary` / `Shrink`) | `references/testing.md` |
 | Measuring performance (`@bench.T` benchmarks, native `--profile`, before/after methodology) | `references/optimization.md` |
 | Code navigation with `moon ide` (outline/peek-def/find-references/rename/hover/doc/workspace-symbols), API-shrinkage planning with `moon ide analyze` (dependent usage counts; mixed-target + path-filter gotchas) | `references/moon-ide.md` |
 | Binding a C library (`extern "c"`, stubs, ownership, callbacks, ASan, disabling bundled mimalloc) | `references/ffi/c.md` (+ topic files in `references/ffi/`) |

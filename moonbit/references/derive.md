@@ -18,7 +18,8 @@ Configuring auto-derived traits. For the bare list of derivable traits, see `typ
 | `Compare` | `<`, `>`, `<=`, `>=` (orders enums by definition order) |
 | `Default` | `T::default()` |
 | `Hash` | `Map` / `HashSet` keys |
-| `Arbitrary` | property testing (`@quickcheck`) |
+| `Arbitrary` | property testing (`@quickcheck`); write as `derive(@quickcheck.Arbitrary)` |
+| `Shrink` | counterexample shrinking (`derive(@quickcheck.Shrink)`) — in-place field shrinking only, see `testing.md` "Property tests" |
 | `ToJson` | `json_inspect`, `to_json()` |
 | `FromJson` | `@json.from_json` |
 

@@ -145,6 +145,95 @@ test "record anything" (t : @test.T) {
 - One snapshot per filename per test block. Use distinct filenames if you want to record multiple artifacts in one test.
 - Snapshots are checked into version control alongside the test.
 
+## Property tests with `@quickcheck`
+
+Import it for the test targets that use it:
+
+```
+import {
+  "moonbitlang/core/quickcheck",
+} for "test"
+```
+
+(`for "wbtest"` for white-box tests.) `@quickcheck.check(prop, count=...)`
+generates inputs, and on failure shrinks the input and reports
+`QuickCheck falsified after N test(s)` with the shrunk `counterexample:`.
+The input type needs `Arbitrary + Shrink + Debug`; tuples of such types work.
+Other options: `seed?`, `max_size?`, `max_shrinks?`, `filter?`, `observe?`
+(with `classify` / `label` / `collect`). `@quickcheck.report(...)` returns the
+result as a value instead of raising, so it can be snapshotted — the way to
+test a generator or shrinker.
+
+### Custom generators: wrap the type, don't derive on it
+
+`derive(@quickcheck.Arbitrary, @quickcheck.Shrink)` works, but must sit on the
+type definition — deriving on a production type makes its package depend on
+`quickcheck` outside tests, and gives you the default distribution. For
+domain types (ASTs, anything with invariants), wrap them in a test-local
+newtype and implement both traits there:
+
+```mbt nocheck
+///|
+priv struct Small(Tree) derive(Debug)
+
+///|
+impl @quickcheck.Arbitrary for Small with fn arbitrary(size, state) {
+  // `state : @quickcheck.RandomState`; draw with `state.next_uint()`.
+  Small(gen_tree(if size < 4 { size } else { 4 }, state))
+}
+
+///|
+impl @quickcheck.Shrink for Small with fn shrink(self) {
+  shrink_tree(self.0).map(Small(_)).iter()
+}
+```
+
+Lambda parameters cannot be patterns, so unwrap with `let` on the first line:
+`(pair : (Small, Small)) => { let (Small(a), Small(b)) = pair; ... }`.
+
+`impl @quickcheck.Shrink for T` with no body is legal and means "never shrink"
+— avoid it: failures then report the raw random input.
+
+### Shrinking recursive types
+
+The **derived** `Shrink` only shrinks one field **in place** (same
+constructor, smaller field). It never replaces a node by one of its
+sub-terms, so a tree's depth never decreases and a deep random
+counterexample stays deep. For recursive types, hand-write a shrinker that
+offers both:
+
+```mbt nocheck
+///|
+fn shrink_tree(tree : Tree) -> Array[Tree] {
+  match tree {
+    Leaf(n) => if n > 0 { [Leaf(0)] } else { [] }
+    Node(l, r) => {
+      let smaller = [l, r] // replace the node by a sub-tree
+      for s in shrink_tree(l) {
+        smaller.push(Node(s, r)) // or shrink one child in place
+      }
+      for s in shrink_tree(r) {
+        smaller.push(Node(l, s))
+      }
+      smaller
+    }
+  }
+}
+```
+
+Keep the in-place candidates even though they look redundant: a failure that
+depends on context (e.g. a variable and the binder above it) is lost if
+shrinking can only jump to sub-terms. When the input is a pair built to be
+related (e.g. a term and a transformed copy), shrink both sides **in
+lockstep** so the relation survives.
+
+### Check the property can fail
+
+Random inputs rarely hit the interesting near-misses (two terms that differ
+only in one detail). After writing a property, plant a bug in the code under
+test and confirm some property fails; if none does, add a generator that
+produces near-misses on purpose. Restore the code afterwards.
+
 ## Error handling in tests
 
 - **Expected success**: call the raising function directly — if it unexpectedly raises, the test fails with the actual error.
