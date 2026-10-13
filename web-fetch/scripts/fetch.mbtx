@@ -11,8 +11,7 @@
 // library, `~/.openseek/skills/tonyfettes-skills-web-fetch` (that is
 // %USERPROFILE%\.openseek\skills\... on Windows) or whatever
 // $OPENSEEK_GLOBAL_SKILLS_DIR names — or a project's
-// <workspace>/.openseek/skills/tonyfettes-skills-web-fetch. In a checkout of
-// this repository it is web-fetch/scripts/fetch.mbtx instead.
+// <workspace>/.openseek/skills/tonyfettes-skills-web-fetch.
 //
 // Every argument is forwarded verbatim to the published CLI:
 //

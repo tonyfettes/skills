@@ -46,8 +46,7 @@ own directory. Which directory that is depends on the platform and the install:
 the global library is `~/.openseek/skills` (`%USERPROFILE%\.openseek\skills` on
 Windows), and `$OPENSEEK_GLOBAL_SKILLS_DIR` or a project's `.openseek/skills`
 can replace it — so take the path from the skills list the agent was given: the
-entry ends in `/SKILL.md`, and the script is beside it. In a checkout of this
-repository it is `web-fetch/scripts/fetch.mbtx`.
+entry ends in `/SKILL.md`, and the script is beside it.
 
 An agent can call it instead of writing an inline `moonx` wrapper; it forwards
 every argument, and the CLI's exit status, unchanged (`0` all pages printed,

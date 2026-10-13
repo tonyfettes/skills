@@ -73,8 +73,7 @@ platform and the install: the global library is `~/.openseek/skills`
 (`%USERPROFILE%\.openseek\skills` on Windows), and
 `$OPENSEEK_GLOBAL_SKILLS_DIR` or a project's `.openseek/skills` can replace it —
 so take the path from the skills list the agent was given: this skill's entry
-ends in `/SKILL.md`, and the script is `scripts/fetch.mbtx` beside it. In a
-checkout of this repository it is `web-fetch/scripts/fetch.mbtx`.
+ends in `/SKILL.md`, and the script is `scripts/fetch.mbtx` beside it.
 
 It lets an agent call the CLI without writing an inline `moonx` wrapper: every
 argument is forwarded to `moonx tonyfettes/skills-web-fetch`, and that process's
