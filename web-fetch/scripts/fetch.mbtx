@@ -1,0 +1,57 @@
+// Named script for SeekMoon / OpenSeek agents: fetch web pages and print their
+// readable content, without writing an inline `moonx` wrapper at each call site.
+//
+// Call it from a workspace that contains this file:
+//
+//   mbtx(filename="scripts/fetch.mbtx", args=["https://example.com/"])
+//
+// Every argument is forwarded verbatim to the published CLI:
+//
+//   moonx tonyfettes/skills-web-fetch [options] <url> [...]
+//
+// so all of its options work here (`--raw`, `--links`, `--stdin`,
+// `--text <chars>`, `--max <bytes>`, `--ua <string>`, `-h/--help`). See SKILL.md
+// and README.md in the repo root for details. The process exit status is the
+// CLI's own: 0 all pages printed, 1 at least one page failed, 2 usage error.
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/shell",
+  "moonbitlang/core/env",
+  "moonbitlang/x/sys",
+}
+
+///|
+fn usage() -> String {
+  let text =
+    #|usage: mbtx(filename="scripts/fetch.mbtx", args=[options] <url> [...])
+    #|
+    #|Named-script front end for the "web-fetch" CLI. Arguments are forwarded to
+    #|
+    #|  moonx tonyfettes/skills-web-fetch [options] <url> [...]
+    #|
+    #|which fetches each URL and prints its readable content: HTML is reduced to
+    #|its title and main text, other responses (JSON, text, XML) are printed raw.
+    #|
+    #|examples:
+    #|  args=["https://example.com/"]
+    #|  args=["--links", "https://example.com/"]
+    #|  args=["--text", "20000", "https://www.rfc-editor.org/rfc/rfc7578.txt"]
+    #|
+    #|for the full option list: args=["--help"]
+  text
+}
+
+///|
+async fn main {
+  let args = @env.args()[1:]
+  if args.is_empty() {
+    println(usage())
+    @sys.exit(2)
+  }
+  let exit_code = @shell.Cmd("moonx", ["tonyfettes/skills-web-fetch", ..args]).each_line(
+    line => println(line),
+  )
+  if exit_code != 0 {
+    @sys.exit(exit_code)
+  }
+}

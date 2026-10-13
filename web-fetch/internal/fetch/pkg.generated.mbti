@@ -1,0 +1,26 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "tonyfettes/skills-web-fetch/internal/fetch"
+
+// Values
+pub async fn fetch_page(String, max_bytes? : Int, user_agent? : String) -> Page
+
+pub fn looks_like_html(String, String) -> Bool
+
+// Errors
+pub suberror FetchError {
+  TooManyRedirects(String)
+  HttpStatus(Int, String, String)
+  RequestFailed(String, String)
+  NotText(String)
+}
+
+// Types and methods
+pub struct Page {
+  url : String
+  content_type : String
+  body : String
+}
+
+// Type aliases
+
+// Traits

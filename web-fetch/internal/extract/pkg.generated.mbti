@@ -1,0 +1,18 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "tonyfettes/skills-web-fetch/internal/extract"
+
+// Values
+pub fn extract_article(String, String, link_limit? : Int) -> Article
+
+// Errors
+
+// Types and methods
+pub struct Article {
+  title : String
+  text : String
+  links : Array[(String, String)]
+}
+
+// Type aliases
+
+// Traits

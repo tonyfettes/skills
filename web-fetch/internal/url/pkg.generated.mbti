@@ -1,0 +1,13 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "tonyfettes/skills-web-fetch/internal/url"
+
+// Values
+pub fn absolute_url(String, String) -> String?
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

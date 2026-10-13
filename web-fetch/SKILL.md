@@ -55,14 +55,28 @@ least one page failed (each failure prints one `error: ...` line), `2` usage
 error.
 
 `moonx` pulls the module from mooncakes.io; the module must be **published**
-first (`moon login` + `moon publish` from this repo). While developing
-locally, run the same binary from the repo root with:
+first (`moon login` + `moon publish` from this directory). While developing
+locally, run the same binary from here with:
 
 ```text
 moon run --target native . -- <url>
 moon test                       # 5 unit tests across internal/* packages
 moon cram test tests/cram       # offline CLI contract tests
 moon build --target wasm        # what moonx will run
+```
+
+### Named script (SeekMoon / OpenSeek)
+
+The module ships a named script at `scripts/fetch.mbtx`, so an agent can call it
+instead of writing an inline `moonx` wrapper. It forwards every argument to
+`moonx tonyfettes/skills-web-fetch` and exits with that process's status (`0`
+all pages printed, `1` a page failed, `2` usage error). The path resolves from
+the agent's workspace root, so it is `web-fetch/scripts/fetch.mbtx` when that
+root is a checkout of this repository:
+
+```text
+mbtx(filename="scripts/fetch.mbtx", args=["<url>"])
+mbtx(filename="web-fetch/scripts/fetch.mbtx", args=["<url>"])
 ```
 
 ### Options

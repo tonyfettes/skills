@@ -1,0 +1,11 @@
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/stdio",
+  "moonbitlang/core/env",
+  "moonbitlang/core/string",
+  "moonbitlang/x/sys",
+  "tonyfettes/skills-web-fetch/internal/extract",
+  "tonyfettes/skills-web-fetch/internal/fetch",
+}
+
+pkgtype(kind: "executable")
