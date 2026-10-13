@@ -1,9 +1,18 @@
 // Named script for SeekMoon / OpenSeek agents: fetch web pages and print their
 // readable content, without writing an inline `moonx` wrapper at each call site.
 //
-// Call it from a workspace that contains this file:
+// Call it by absolute path from anywhere: the script sits beside the skill's
+// SKILL.md, while mbtx resolves a relative filename from the agent's workspace
+// root (not from the skill) and expands neither `~` nor `$VAR`:
 //
-//   mbtx(filename="scripts/fetch.mbtx", args=["https://example.com/"])
+//   mbtx(filename="<skill-dir>/scripts/fetch.mbtx", args=["https://example.com/"])
+//
+// where <skill-dir> is the directory the skill is listed under — the global
+// library, `~/.openseek/skills/tonyfettes-skills-web-fetch` (that is
+// %USERPROFILE%\.openseek\skills\... on Windows) or whatever
+// $OPENSEEK_GLOBAL_SKILLS_DIR names — or a project's
+// <workspace>/.openseek/skills/tonyfettes-skills-web-fetch. In a checkout of
+// this repository it is web-fetch/scripts/fetch.mbtx instead.
 //
 // Every argument is forwarded verbatim to the published CLI:
 //

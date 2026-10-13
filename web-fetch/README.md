@@ -41,14 +41,24 @@ prints one `error: ...` line); `2` usage error.
 
 ## Named script (SeekMoon / OpenSeek)
 
-An agent can call the committed `scripts/fetch.mbtx` instead of writing an
-inline `moonx` wrapper; it forwards every argument, and the CLI's exit status,
-unchanged. The path resolves from the agent's workspace root, so it is
-`web-fetch/scripts/fetch.mbtx` when that root is a checkout of this repository:
+The skill ships `scripts/fetch.mbtx` right beside this README, in the skill's
+own directory. Which directory that is depends on the platform and the install:
+the global library is `~/.openseek/skills` (`%USERPROFILE%\.openseek\skills` on
+Windows), and `$OPENSEEK_GLOBAL_SKILLS_DIR` or a project's `.openseek/skills`
+can replace it — so take the path from the skills list the agent was given: the
+entry ends in `/SKILL.md`, and the script is beside it. In a checkout of this
+repository it is `web-fetch/scripts/fetch.mbtx`.
+
+An agent can call it instead of writing an inline `moonx` wrapper; it forwards
+every argument, and the CLI's exit status, unchanged (`0` all pages printed,
+`1` a page failed, `2` usage error).
+
+`mbtx(filename=...)` resolves a relative path from the **agent's workspace
+root**, not from the skill directory, and expands neither `~` nor `$VAR`, so
+pass the script's absolute path:
 
 ```text
-mbtx(filename="scripts/fetch.mbtx", args=["https://example.com/"])
-mbtx(filename="web-fetch/scripts/fetch.mbtx", args=["https://example.com/"])
+mbtx(filename="<skill-dir>/scripts/fetch.mbtx", args=["https://example.com/"])
 ```
 
 ## Local development

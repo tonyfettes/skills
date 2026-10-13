@@ -67,16 +67,30 @@ moon build --target wasm        # what moonx will run
 
 ### Named script (SeekMoon / OpenSeek)
 
-The module ships a named script at `scripts/fetch.mbtx`, so an agent can call it
-instead of writing an inline `moonx` wrapper. It forwards every argument to
-`moonx tonyfettes/skills-web-fetch` and exits with that process's status (`0`
-all pages printed, `1` a page failed, `2` usage error). The path resolves from
-the agent's workspace root, so it is `web-fetch/scripts/fetch.mbtx` when that
-root is a checkout of this repository:
+The skill ships a named script at `scripts/fetch.mbtx`, right beside this
+`SKILL.md` in the skill's own directory. Which directory that is depends on the
+platform and the install: the global library is `~/.openseek/skills`
+(`%USERPROFILE%\.openseek\skills` on Windows), and
+`$OPENSEEK_GLOBAL_SKILLS_DIR` or a project's `.openseek/skills` can replace it —
+so take the path from the skills list the agent was given: this skill's entry
+ends in `/SKILL.md`, and the script is `scripts/fetch.mbtx` beside it. In a
+checkout of this repository it is `web-fetch/scripts/fetch.mbtx`.
+
+It lets an agent call the CLI without writing an inline `moonx` wrapper: every
+argument is forwarded to `moonx tonyfettes/skills-web-fetch`, and that process's
+status becomes the script's own (`0` all pages printed, `1` a page failed, `2`
+usage error). It needs only `moonx`, so it runs from any workspace.
+
+`mbtx(filename=...)` resolves a relative path from the **agent's workspace
+root**, not from the skill directory, and expands neither `~` nor `$VAR`, so
+pass that absolute path:
 
 ```text
-mbtx(filename="scripts/fetch.mbtx", args=["<url>"])
-mbtx(filename="web-fetch/scripts/fetch.mbtx", args=["<url>"])
+# <skill-dir> is the directory this skill is listed under, e.g.
+#   /Users/you/.openseek/skills/tonyfettes-skills-web-fetch       (macOS)
+#   /home/you/.openseek/skills/tonyfettes-skills-web-fetch        (Linux)
+#   C:\Users\you\.openseek\skills\tonyfettes-skills-web-fetch     (Windows)
+mbtx(filename="<skill-dir>/scripts/fetch.mbtx", args=["<url>"])
 ```
 
 ### Options
