@@ -18,7 +18,8 @@ Labelled blocks (`references/control-flow.md`) validated on moonc v0.10.8
 moonc v0.10.14 (2026-09-28). Spot-updates validated on moonc v0.10.13 / async 0.21.2
 (2026-09-16): `pub extend` for `Show`/`Debug` impls, `clamped_view`
 truncation, one-shot `@http` requests (`references/errors.md`, `language.md`,
-`async.md`).
+`async.md`). Cancellation guidance validated on async 0.22.4 (2026-10-14):
+`catch` no longer captures cancellation (`references/async.md`).
 
 **Assume the toolchain is v0.10.4** and follow this skill's guidance as-is —
 do not preemptively run `moon version` or second-guess the references. Deviate
@@ -266,7 +267,7 @@ my_module
 - **Test failure priority: re-raise > `fail` > never `abort`** — in tests, prefer letting the error propagate (the test fails with the actual error); use `fail(...)` only when propagation is impossible; never `abort` in a test.
 - **Don't `match` an Option** — use `x.unwrap_or(...)` (and friends) for trivial defaults, `if x is Some(v) { ... } else { ... }` for branching (chain it with related boolean conditions when that removes a nested `match` without hiding behavior), or `guard x is Some(v) else { ... }` for early exit. Reserve `match` for enums with several meaningful arms.
 - **Don't encode absence or failure as sentinel values (`""`, `-1`, empty array)** — model it in the type. A function that can come up empty returns `T?` (or raises a typed `suberror`), never `""`; a field that starts unset is `String?`, not `String` initialized to `""`; an optional param whose absence matters downstream is `arg? : T?`, never `arg? : String = ""` re-detected with `== ""` later. `unwrap_or("")` is legitimate only at the last step before display/serialization — never mid-pipeline. `catch { _ => "" }` swallows the error AND corrupts the domain. Litmus test: if any code branches on `== ""` / `.is_empty()` to mean "present or not", the type should have been `T?`. Boundary validation that rejects empty input (`guard name.trim() != "" else { raise ... }`) is fine — that rejects bad data rather than encoding absence. See "Modeling absence" in `references/types.md`.
-- **Don't swallow all async errors** — never a catch-all `catch { _ => () }` in async code; preserve cancellation first (`error if @async.is_being_cancelled() => raise error`); see `references/async.md`.
+- **Don't swallow all async errors** — a catch-all `catch { _ => () }` in async code is for genuinely best-effort operations only. Since `moonbitlang/async` 0.22.0 `catch` cannot capture cancellation, so do **not** add an `error if @async.is_being_cancelled() => raise error` arm — it is dead code; see `references/async.md`.
 - **Don't use `return` unnecessarily** — the last expression is the return value
 - **Don't create methods without `Type::` prefix** — methods need explicit type prefix
 - **Don't forget to handle array bounds** — use `get()` for safe access
@@ -283,7 +284,7 @@ my_module
 - **Don't call `@json.inspect()`** — use the prelude `json_inspect(value, ...)` without a package prefix
 - **Async** — MoonBit has no `await` keyword; do not add it. Async functions/tests are marked with the `async` prefix (e.g. `[pub] async fn ...`, `async test ...`). Async functions default to raising, so do not add `raise`; add `noraise` only when the async body must not raise.
 - **No `finally`** in MoonBit — use `defer expr` / `defer { ... }` for scope-exit cleanup (runs on normal exit and when an error propagates); see `references/control-flow.md`
-- **Cancellation-critical async cleanup** — in `moonbitlang/async`, `defer`/`catch` DO run on cancellation, but any async operation inside the cleanup is itself cancelled immediately; must-complete cleanup needs `@async.protect_from_cancel`, with important refinements — read `references/async.md` before writing one.
+- **Cancellation-critical async cleanup** — in `moonbitlang/async` (≥ 0.22.0), `defer`/`errdefer` run on cancellation but `catch` does not; any async operation inside the cleanup is itself cancelled immediately; must-complete cleanup needs `@async.protect_from_cancel`, with important refinements — read `references/async.md` before writing one.
 - **Async pipeline backpressure** — use **bounded** queues between reader/writer tasks (an `Unbounded` inbound queue can OOM the process); shutdown/queue-draining rules in `references/async.md`.
 - **No cross-package extension methods** — you cannot define `@otherpkg.Type::method` from outside that type's own package. Use free functions or define a trait and `impl Trait for @otherpkg.Type` instead.
 - **Do NOT use context7** for MoonBit library lookups — MoonBit packages aren't indexed there. Use `moon ide doc`, mooncakes.io, the moon registry cache (`${MOON_HOME:-$HOME/.moon}/registry/cache/`), `.mbti` files, or the library's source/GitHub instead.

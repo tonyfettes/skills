@@ -139,7 +139,6 @@ still reaches the suberror's `Show`:
 
 ```mbt nocheck
 } catch {
-  error if @async.is_being_cancelled() => raise error
   (@shares.EmptyTitle | @shares.Oversized) as refusal =>
     Failed(message="\{refusal}")
 }

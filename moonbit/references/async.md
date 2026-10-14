@@ -122,20 +122,31 @@ Run with `moon test --target native` unless `moon.mod` sets
 
 ## Don't swallow all async errors
 
-In async code, never write a catch-all branch like `catch { _ => () }`. If a
-catch-all is genuinely needed for a user-visible best-effort operation, first
-preserve cancellation with
-`error if @async.is_being_cancelled() => raise error`. If cancellation itself
-should be swallowed, discuss that behavior with the user before doing it.
+In async code, don't write a catch-all branch like `catch { _ => () }` unless
+the operation is genuinely best-effort (a clipboard helper, an optional
+probe) and its failure is harmless.
+
+Since `moonbitlang/async` 0.22.0, cancellation is not an error: it propagates
+like one and runs `defer`/`errdefer`, but `catch` cannot capture it. So a
+catch-all no longer swallows cancellation, and the old guard arm
+`error if @async.is_being_cancelled() => raise error` is dead code — don't
+write it, and remove it when touching code that has it.
+`@async.is_cancellation_error` is deprecated (always `false`).
+
+`is_being_cancelled()` is still useful in one case: a catch-all inside a loop
+body, where the loop would otherwise keep retrying while the task is being
+cancelled. To react to cancellation itself, use
+`@async.handle_cancellation(f)` (returns `None` when `f` was cancelled; the
+task stays cancelled) or `@async.with_cancellation_handler(f, handler=...)`.
 
 ## Cancellation-safe cleanup
 
-Cancellation is delivered as a raised error at suspension points, so
-`defer`/`catch` blocks do run on cancellation. Plain `defer` cannot contain
-async calls at all (compile error "cannot call async function in defer"), so
-async cleanup lives in a `catch`-plus-normal-path split or in
-`TaskGroup::add_defer` — and there, any **async operation inside the
-cleanup** is itself cancelled immediately while the task is being cancelled.
+Cancellation is delivered as a signal at suspension points. It runs
+`defer`/`errdefer` blocks but, since async 0.22.0, never reaches `catch` —
+so cleanup that must run on cancellation cannot live in a `catch` arm. Put it
+in `defer`/`errdefer`, `TaskGroup::add_defer`, or react with
+`@async.handle_cancellation`. Any **async operation inside the cleanup** is
+itself cancelled immediately while the task is being cancelled.
 Must-complete async cleanup (terminal-state restore, external-resource
 release) needs `@async.protect_from_cancel` or `TaskGroup::add_defer` with
 the same protection inside. Refinements from
