@@ -13,7 +13,7 @@ pub struct Article {
 pub fn extract_article(
   html : String,
   base_url : String,
-  link_limit? : Int = 200,
+  link_limit~ : Int32 = 200,
 ) -> Article {
   let doc = @html.parse(html)
   let html_id = child_tag(doc, 0, "html")
@@ -52,7 +52,7 @@ pub fn extract_article(
 }
 
 ///|
-fn child_tag(doc : @html.Document, parent : Int, tag : String) -> Int {
+fn child_tag(doc : @html.Document, parent : Int32, tag : String) -> Int32 {
   if parent < 0 {
     return -1
   }
@@ -66,7 +66,7 @@ fn child_tag(doc : @html.Document, parent : Int, tag : String) -> Int {
 
 ///|
 /// Depth-first search for the first `<main>` or `<article>` element.
-fn find_mainish(doc : @html.Document, id : Int) -> Int {
+fn find_mainish(doc : @html.Document, id : Int32) -> Int32 {
   match doc.get_tag_name(id) {
     Some(tag) => if tag == "main" || tag == "article" { return id } else { () }
     None => ()
@@ -81,7 +81,7 @@ fn find_mainish(doc : @html.Document, id : Int) -> Int {
 }
 
 ///|
-fn find_first_tag(doc : @html.Document, id : Int, tag : String) -> Int {
+fn find_first_tag(doc : @html.Document, id : Int32, tag : String) -> Int32 {
   if doc.get_tag_name(id) is Some(t) && t == tag {
     return id
   }
@@ -186,7 +186,7 @@ fn flush_line(c : TextCollector) -> Unit {
 }
 
 ///|
-fn collect_text(doc : @html.Document, root : Int) -> Array[String] {
+fn collect_text(doc : @html.Document, root : Int32) -> Array[String] {
   if root < 0 {
     return []
   }
@@ -197,7 +197,7 @@ fn collect_text(doc : @html.Document, root : Int) -> Array[String] {
 }
 
 ///|
-fn walk_text(c : TextCollector, id : Int, in_pre : Bool) -> Unit {
+fn walk_text(c : TextCollector, id : Int32, in_pre : Bool) -> Unit {
   match c.doc.get_tag_name(id) {
     None => {
       let s = c.doc.get_text_content(id)
@@ -248,9 +248,9 @@ fn walk_text(c : TextCollector, id : Int, in_pre : Bool) -> Unit {
 ///|
 fn collect_links(
   doc : @html.Document,
-  id : Int,
+  id : Int32,
   base : String,
-  limit : Int,
+  limit : Int32,
 ) -> Array[(String, String)] {
   let out : Array[(String, String)] = []
   let seen : Map[String, Bool] = Map([])
@@ -261,11 +261,11 @@ fn collect_links(
 ///|
 fn walk_links(
   doc : @html.Document,
-  id : Int,
+  id : Int32,
   base : String,
   out : Array[(String, String)],
   seen : Map[String, Bool],
-  limit : Int,
+  limit : Int32,
 ) -> Unit {
   if out.length() >= limit {
     return
@@ -313,7 +313,7 @@ fn walk_links(
 }
 
 ///|
-fn is_ws_code(u : Int) -> Bool {
+fn is_ws_code(u : Int32) -> Bool {
   u == 9 || u == 10 || u == 12 || u == 13 || u == 32 || u == 160
 }
 
@@ -339,7 +339,7 @@ fn collapse_ws(s : String) -> String {
         let u2 = s[i + 1].to_int()
         if u2 >= 0xDC00 && u2 <= 0xDFFF {
           let cp = 0x10000 + ((u1 - 0xD800) << 10) + (u2 - 0xDC00)
-          buf.write_char(Int::unsafe_to_char(cp))
+          buf.write_char(Int32::unsafe_to_char(cp))
           i = i + 2
           continue
         }
@@ -347,7 +347,7 @@ fn collapse_ws(s : String) -> String {
       i = i + 1 // lone surrogate: drop
       continue
     }
-    buf.write_char(Int::unsafe_to_char(u1))
+    buf.write_char(Int32::unsafe_to_char(u1))
     i = i + 1
   }
   buf.to_string()

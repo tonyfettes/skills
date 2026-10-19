@@ -17,8 +17,9 @@
 //
 //   moonx tonyfettes/skills-web-fetch [options] <url> [...]
 //
-// so all of its options work here (`--raw`, `--links`, `--stdin`,
-// `--text <chars>`, `--max <bytes>`, `--ua <string>`, `-h/--help`). See SKILL.md
+// so all of its options work here (`--backend <name>`, `--api-key <key>`,
+// `--base-url <url>`, `--raw`, `--links`, `--stdin`, `--text <chars>`,
+// `--max <bytes>`, `--ua <string>`, `-h/--help`). See SKILL.md
 // and README.md in the repo root for details. The process exit status is the
 // CLI's own: 0 all pages printed, 1 at least one page failed, 2 usage error.
 import {
@@ -37,12 +38,15 @@ fn usage() -> String {
     #|
     #|  moonx tonyfettes/skills-web-fetch [options] <url> [...]
     #|
-    #|which fetches each URL and prints its readable content: HTML is reduced to
-    #|its title and main text, other responses (JSON, text, XML) are printed raw.
+    #|which fetches each URL and prints its title plus Markdown body. With a
+    #|DeepSeek API key (--api-key, $DEEPSEEK, or $DEEPSEEK_API_KEY) it uses the
+    #|DeepSeek Fetch API; otherwise it fetches locally and reduces HTML to its
+    #|title and main text. --backend auto|deepseek|local forces a choice.
     #|
     #|examples:
     #|  args=["https://example.com/"]
     #|  args=["--links", "https://example.com/"]
+    #|  args=["--backend", "local", "https://api.github.com/repos/moonbitlang/core"]
     #|  args=["--text", "20000", "https://www.rfc-editor.org/rfc/rfc7578.txt"]
     #|
     #|for the full option list: args=["--help"]

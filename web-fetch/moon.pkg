@@ -4,6 +4,7 @@ import {
   "moonbitlang/core/env",
   "moonbitlang/core/string",
   "moonbitlang/x/sys",
+  "tonyfettes/skills-web-fetch/internal/deepseek",
   "tonyfettes/skills-web-fetch/internal/extract",
   "tonyfettes/skills-web-fetch/internal/fetch",
 }

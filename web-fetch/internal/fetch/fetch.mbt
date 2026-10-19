@@ -1,7 +1,7 @@
 ///|
 pub suberror FetchError {
   TooManyRedirects(String)
-  HttpStatus(Int, String, String)
+  HttpStatus(Int32, String, String)
   RequestFailed(String, String)
   NotText(String)
 }
@@ -14,10 +14,10 @@ pub struct Page {
 }
 
 ///|
-const MAX_REDIRECTS : Int = 10
+const MAX_REDIRECTS : Int32 = 10
 
 ///|
-const DEFAULT_MAX_BYTES : Int = 2_000_000
+const DEFAULT_MAX_BYTES : Int32 = 2_000_000
 
 ///|
 fn headers_map(user_agent : String) -> @http.Headers {
@@ -46,8 +46,8 @@ fn content_type_of(resp : @http.Response) -> String {
 /// response with its body decoded as UTF-8 (capped at `max_bytes`).
 pub async fn fetch_page(
   url : String,
-  max_bytes? : Int = DEFAULT_MAX_BYTES,
-  user_agent? : String = "tonyfettes/skills-web-fetch/0.1",
+  max_bytes~ : Int32 = DEFAULT_MAX_BYTES,
+  user_agent~ : String = "tonyfettes/skills-web-fetch/0.2",
 ) -> Page {
   let headers = headers_map(user_agent)
   let (final_url, resp, data) = redirect_get(url, 0, headers)
@@ -67,7 +67,7 @@ pub async fn fetch_page(
 ///|
 async fn redirect_get(
   url : String,
-  hops : Int,
+  hops : Int32,
   headers : @http.Headers,
 ) -> (String, @http.Response, &@io.Data) {
   if hops > MAX_REDIRECTS {

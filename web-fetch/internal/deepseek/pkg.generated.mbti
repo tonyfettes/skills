@@ -1,0 +1,34 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "tonyfettes/skills-web-fetch/internal/deepseek"
+
+// Values
+pub const DEFAULT_BASE_URL : String = "https://api.deepseek.com"
+
+pub const MAX_URL_LENGTH : Int = 8192
+
+pub fn endpoint_for(String) -> String
+
+pub async fn fetch_page(String, String, base_url? : String, user_agent? : String) -> Page
+
+pub fn markdown_links(String, limit? : Int) -> Array[(String, String)]
+
+pub fn parse_page(String) -> Page raise FetchError
+
+pub fn validate_url(String) -> String?
+
+// Errors
+pub suberror FetchError {
+  InvalidUrl(String)
+  HttpStatus(Int, String)
+  Malformed(String)
+}
+
+// Types and methods
+pub struct Page {
+  title : String
+  content : String
+}
+
+// Type aliases
+
+// Traits

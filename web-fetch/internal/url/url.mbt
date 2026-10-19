@@ -50,7 +50,7 @@ pub fn absolute_url(base : String, ref_ : String) -> String? {
 }
 
 ///|
-fn last_index_of_slash(s : String) -> Int {
+fn last_index_of_slash(s : String) -> Int32 {
   let mut result = -1
   for i in 0..<s.length() {
     if s[i] == '/' {
@@ -61,7 +61,7 @@ fn last_index_of_slash(s : String) -> Int {
 }
 
 ///|
-fn first_sep(s : String) -> Int {
+fn first_sep(s : String) -> Int32 {
   match s.find("/") {
     Some(i) =>
       match s.find("?") {
