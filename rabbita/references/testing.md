@@ -8,6 +8,13 @@ Keep `update` a top-level function of shape
 test. (Pre-0.16 code used `(Emit, Msg, Model) -> (Cmd, Model)`; the examples
 below use the 0.16 order.)
 
+Tests that reach a private `update`/`Model` go in a white-box `*_wbtest.mbt`;
+black-box `*_test.mbt` files must qualify the package's names (`@app.update`)
+or moonc warns `test_unqualified_package`. Import
+`moonbitlang/core/debug` in `moon.pkg` (`import { ... } for "wbtest"`) before
+calling `@debug.assert_eq`; an unimported core package now warns
+`core_package_not_imported`.
+
 Purity means two things — both must be tested:
 
 1. **Idempotence**: calling update twice on the same input produces the same model output

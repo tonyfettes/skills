@@ -5,8 +5,13 @@ description: Use when writing or modifying update functions or views in Rabbita 
 
 # Rabbita
 
-Baseline: **Rabbita 0.16.2** (2026-09). Check the project's `moon.mod` pin; older
-pins may still carry the deprecated shapes listed below.
+Baseline: **Rabbita 0.16.5** (2026-10-12; validated on moonc v0.10.16). Check the
+project's `moon.mod` pin; older pins may still carry the deprecated shapes listed
+below. Behavior changes since 0.16.2: relative `@http` URLs resolve against
+`document.baseURI` instead of the origin (0.16.5, see `references/ffi-packages.md`);
+`read_only~` and other camelCase boolean props actually apply (0.16.4); requires
+`moonbitlang/async` 0.22 (0.16.3); a hand-written `@cmd.Context` impl renames
+`get_origin` → `get_base_uri` (0.16.5).
 
 A Rabbita app is a tree of **components**: ordinary functions returning
 `Val[Html]` that run once at mount to build an incremental graph. Inside a
@@ -16,9 +21,11 @@ component, state is created with:
 - `create_state(init, update~, subscriptions?)` — `update : (Model, Msg, Emit[Msg]) -> (Model, Cmd)`, `subscriptions : (Model, Emit[Msg]) -> @sub.Sub`
 - `create_variable(init)` — returns a setter `Emit[(Model) -> Model]`
 - `create_state_with_init(init=emit => (Model, Cmd), update~)` — startup command
-- `create_state_with_input(input=val, init~, update~)` — child that reads a parent `Val`
+- `create_state_with_input(input=val, init~, update~)` — child that reads a parent `Val`; `init : (Emit[Msg], Input) -> (Model, Cmd)`, `update : (Model, Input, Msg, Emit[Msg]) -> (Model, Cmd)`
 
-Each returns `(Val[Model], Emit[Msg])`. **`Model` must implement `Eq`**: an
+Each returns `(Val[Model], Emit[Msg])`. For a single-state app,
+`@rabbita.elmish(model~, view~, update~, subscriptions?)` wraps `create_state` +
+`new` and returns the `App`. **`Model` must implement `Eq`**: an
 equal result stops propagation, so derive `Eq` and keep the model immutable.
 
 **`update` must be a pure function.** It returns a new model and commands
@@ -32,8 +39,10 @@ is enforced through effect-package design, model structure, and testing.
 > `simple_cell`, `simple_cell_with_emit`, `static_cell`, `Cell` (now a
 > component calling `create_state` / `create_pure_state` / `Val::constant`);
 > the old update shape `(Emit, Msg, Model) -> (Cmd, Model)` (now
-> `(Model, Msg, Emit) -> (Model, Cmd)`); `App::with_init(cmd)` (now
-> `create_state_with_init`); `@cmd.raw_effect` (now `@cmd.custom_cmd`);
+> `(Model, Msg, Emit) -> (Model, Cmd)`); `@cmd.raw_effect` (now
+> `@cmd.custom_cmd`); `@js.Nullable::get_exn` / `@js.Optional::get_exn` (now
+> `unwrap` / `to_option`). Removed outright (compile error, no shim):
+> `App::with_init(cmd)` (now `create_state_with_init`) and
 > `App::with_route(url_changed=...)` (now `@sub.on_url_changed` /
 > `@sub.on_url_request` subscriptions). Migrate to the new names; do not
 > introduce the old ones.
@@ -52,7 +61,7 @@ is enforced through effect-package design, model structure, and testing.
 
 ## Use built-in effect packages before writing FFI
 
-Rabbita ships Cmd/Sub-returning packages for most browser effects: `@http`, `@websocket`, `@clipboard`, `@nav`, `@dialog`, `@indexeddb`, `@url`, and `@sub` (resize, key, mouse, scroll, visibility, animation frame, timer, URL changes). `@rabbita.create_resource` covers load-once data. Check these before hand-writing any `extern "js"`.
+Rabbita ships Cmd/Sub-returning packages for most browser effects: `@http`, `@websocket`, `@clipboard`, `@nav`, `@dialog`, `@url`, and `@sub` (resize, key down/up, mouse move, scroll, visibility, animation frame, timer, URL changes). `@rabbita.create_resource` covers load-once data. Check these before hand-writing any `extern "js"`. There is no storage package (no `@indexeddb`, no `localStorage` wrapper) — persistence is a legitimate FFI package, still under the approval rule below.
 
 Avoid the escape hatches — `@cmd.custom_cmd`, `@sub.custom_sub`, `@cmd.effect`, `@cmd.attempt`, `@html.Attrs`, `@dom`, `trait Scheduler` — unless you are binding a JS library the built-ins genuinely don't cover (then follow `references/ffi-packages.md`). The `@cmd.Op` / `extenum @cmd.Extension` machinery the built-ins use is `#internal(experimental)`; app code stays on `custom_cmd`.
 
@@ -110,15 +119,15 @@ Label every non-obvious `Msg` payload — `AgentProgress(run_id~ : Int, Event)`,
 2. `view` must be **total**: one raise inside a render callback stops rendering. Guard any parser fed partial/streaming input.
 3. A render callback reruns whenever one of its `Val` inputs changes, and it rebuilds all the `Html` it returns — so derive narrower `Val`s (`model.map(m => m.field).view(...)`), wrap expensive subtrees in `@html.memo(inputs, render)` (there is no `@html.lazy`), and cache expensive derivations (parsed ASTs, layouts) in the Model at message time, never in view.
 4. Void elements (`hr`, `br`, `img`, `input`) take **zero** children — no trailing `@html.nothing`.
-5. `on_click` exists only on some elements (`div`, `button`, `li`, `ul` — not `a`/`span`); check the `.mbti`. Clickable text is a styled `button`. Since `on_click` takes an erased `Cmd`, subpackages accept `(payload) -> Cmd` callbacks instead of importing the root `Msg`.
+5. `on_click` exists only on `div`, `button`, `li`, `ul` (not `a`/`span`); check the `.mbti`. Clickable text is a styled `button`. Since `on_click` takes an erased `Cmd`, subpackages accept `(payload) -> Cmd` callbacks instead of importing the root `Msg`.
 6. `on_click` does **not** stop propagation — a clickable nested inside a clickable ancestor fires both handlers. Use the `@html.Attrs` event lambda with `event.stop_propagation()` (a legitimate escape-hatch use) or restructure to avoid nesting.
-7. SSR/native builds: gate DOM-backed code behind `#cfg(target="js")` with inert native stubs; `@rabbita.delay` / `perform` / `attempt` are js-only — packages using them must declare js-only targets.
+7. SSR/native builds: gate DOM-backed code behind `#cfg(target="js")` with inert native stubs; `@rabbita.perform` / `attempt` / `effect` are `#cfg(target="js")` — packages using them must declare js-only targets (`delay`, `batch`, `custom_cmd` compile on every target).
 
 ## Common Mistakes
 
 | Mistake | Fix |
 |---------|-----|
-| Hand-written FFI for http/websocket/clipboard/navigation/storage | Use the built-in package (`@http`, `@websocket`, ...) |
+| Hand-written FFI for http/websocket/clipboard/navigation/dialogs | Use the built-in package (`@http`, `@websocket`, ...) |
 | `pub fn Terminal::write(...)` in FFI package | Make method `fn` (not `pub`); expose `pub fn write(...) -> Cmd` |
 | `term.dispose()` in update | Return `@xterm.dispose(term)` as Cmd |
 | `js_inner_width()` / `get_origin()` / `Date.now()` in update or view | Read once in the component body or `main`, store on Model; or subscribe and carry via Msg |
@@ -128,14 +137,14 @@ Label every non-obvious `Msg` payload — `AgentProgress(run_id~ : Int, Event)`,
 | `Option` + `Bool` for lifecycle state | Replace with enum |
 | Mutable `Array[T]` / `Map` mutated in place in model | Use `@immut/*` (e.g. `@vector.Vector[T]`); never mutate a model collection in place — `Eq` cannot see in-place changes |
 | `struct Model` without `Eq` passed to `create_state` | `derive(Eq)`; for FFI-handle fields write `impl Eq` by identity/generation (see `references/model-design.md`) |
-| FFI type without `dummy()` | Add `pub fn T::dummy() -> T` using `@js.Object::new().inner()` |
+| FFI type without `dummy()` | Add `pub fn T::dummy() -> T` using `@js.Object::new().to_value()` |
 | New message handler without purity test | Add idempotence + dummy trap tests |
 | `Dispatch`, `cell`/`simple_cell`/`static_cell`, `App::with_init`, `@cmd.raw_effect` in new code | `Emit`, a component with `create_state`/`create_pure_state`/`Val::constant`, `create_state_with_init`, `@cmd.custom_cmd` |
 | `update` written as `(emit, msg, model) -> (cmd, model)` | `(model, msg, emit) -> (model, cmd)` — the 0.16 `create_state` shape |
 | `@cmd.custom_cmd` inline in update | Use a built-in package, or move into an FFI package as a named Cmd function |
 | New `extern "js"` written without asking the user | Stop; propose it with the built-ins you checked and wait for approval |
 | `data-*` marker + `MutationObserver` so a component notices its own input changed | Deliver the change through the component's `Input`/`Msg`; state never round-trips through the DOM |
-| Raw `document.addEventListener` for keys/clicks in a sub loader | `@sub.on_key_down` / `@sub.on_mouse_down` etc.; keep the match-and-decide logic in update |
+| Raw `document.addEventListener` for keys/clicks in a sub loader | `@sub.on_key_down` / `on_key_up` / `on_mouse_move`, or element `on_mousedown=` (there is no global mouse-down sub); keep the match-and-decide logic in update |
 | Trailing `@html.nothing` on `hr`/`br`/`img`/`input` | Void elements take zero children |
 | Parsing/deriving expensive data inside `view` | Cache it in the Model at message time; view reads the cache |
 | One giant `model.view(...)` re-rendering everything on each change | Split into narrower `Val`s / child components; `@html.memo` for expensive static subtrees |

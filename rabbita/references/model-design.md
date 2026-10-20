@@ -15,6 +15,16 @@ old one and stops propagation when they are equal, so:
   compared by identity. Do not derive `Eq` on a struct that only exists to
   make tests compile.
 
+```moonbit
+// xterm/xterm.mbt — identity Eq for a handle wrapper
+pub impl Eq for Terminal with fn equal(a, b) {
+  physical_equal(a.0, b.0)
+}
+
+// moonc ≥ 0.10.13: without this line a `pub impl` warns implicit_impl_as_method
+pub extend Terminal with Eq::{equal, not_equal}
+```
+
 ## Rule: The model holds plain data only
 
 Never store these in a model field (or a global):

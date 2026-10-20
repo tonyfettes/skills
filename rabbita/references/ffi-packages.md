@@ -6,13 +6,13 @@ Rabbita already ships Cmd/Sub-returning wrappers for most browser effects. Use t
 
 | Need | Package |
 |------|---------|
-| HTTP requests | `@http` — `@http.get("api/user").expect_json(emit.map(r => UserLoaded(r)))`; `post/put/patch` take a body via `.with_json/with_text/...`; results arrive as `Emit[Result[T, Error]]` |
+| HTTP requests | `@http` — `@http.get("api/user").expect_json(emit.map(r => UserLoaded(r)))`; `post/put/patch` take a body via `.with_json/with_text/...`, `get/delete` take none; results arrive as `Emit[Result[T, Error]]` (`expect_empty` → `Emit[Error?]`); relative-URL caveat below |
 | WebSocket | `@websocket` — connections are keyed by a **string id**, no handle in the model: `@websocket.connect(id, url, on_event=emit.map(e => Socket(e)))`, `send(id, payload)`, `close(id)`, or subscription-style `@websocket.listen(...)` |
-| Clipboard | `@clipboard` |
+| Clipboard | `@clipboard.copy(Text(s), copied?, failed?)`, `paste(pasted~, failed?)` |
 | Navigation / URL | `@nav`, `@url`, `@sub.on_url_changed`, `@sub.on_url_request`, `@html.a` |
-| Dialogs | `@dialog` |
-| IndexedDB storage | `@indexeddb` |
+| Dialogs | `@dialog.show(id, modal?)`, `close(id, return_value?)`, `request_close` — drive a `<dialog>` by element id |
 | Window/global events | `@sub.on_resize`, `on_key_down/up`, `on_mouse_move`, `on_scroll`, `on_visibility_change`, `on_animation_frame`, `every` (timer) |
+| Storage (`localStorage`, IndexedDB) | No built-in — write an FFI package (with approval) |
 
 Escape hatches — `@cmd.custom_cmd`, `@sub.custom_sub`, `@cmd.effect`, `@cmd.attempt`, `@html.Attrs`, `@dom`, `trait Scheduler` — are for binding JS libraries the built-ins don't cover (an editor widget, a charting library, xterm.js, ...). Only then write an FFI package, following the rules below.
 
@@ -20,6 +20,7 @@ Adding any **new** `extern "js"` body requires the user's explicit approval firs
 
 ## Anti-patterns with built-in commands
 
+- **Relative `@http` URLs under client-side routes.** Since 0.16.5 a URL without `://` is string-joined onto `document.baseURI` (0.16.2 used the origin). The base URI is the full page URL unless a `<base href>` is set, and there is no root-relative resolution yet (upstream issue #221): `@http.get("/api/user")` on route `/users/42` requests `/users/42/api/user`. Set `<base href="/">` (or the app's deploy path) in the HTML shell, or pass absolute URLs.
 - **Ignoring the returned `Cmd`/`Request`**: `@http.get("api/user") |> ignore` does nothing. Return the Cmd from update.
 - **Storing a `Request` or `Cmd`** in a global, the Model, or any data structure. Construct commands fresh in update.
 - **Embedding logic in the emit callback**: `expect_empty(r => emit(Status(r.is_none())))` hides a decision in a closure. Carry the raw payload (`emit.map(r => Deleted(r))`) and decide in update.
@@ -45,7 +46,7 @@ pub struct Terminal(@js.Value)
 /// Dummy for testing. Calls to any method will throw,
 /// proving update never invokes them directly.
 pub fn Terminal::dummy() -> Terminal {
-  Terminal(@js.Object::new().inner())
+  Terminal(@js.Object::new().to_value())
 }
 ```
 
@@ -67,6 +68,8 @@ fn Terminal::write(self : Terminal, data : String) -> Unit {
 
 ```moonbit
 // xterm/commands.mbt — PUBLIC Cmd-returning API
+using @cmd {type Cmd, type Emit} // or spell out @cmd.Cmd / @cmd.Emit
+
 pub fn write(term : Terminal, data : String) -> Cmd {
   @cmd.custom_cmd(_ => term.write(data))
 }
@@ -174,7 +177,8 @@ for child in parent.get_children().iter().to_array() {
 ```
 
 or, in your own extern, `Array.from(element.children)` and return
-`Array[@dom.Element]`.
+`FixedArray[@dom.Element]` (moonc ≥ 0.10.16 deprecates `Array` in JS FFI
+signatures: "Use `FixedArray` instead").
 
 A `firstChild`-drain loop is the other correct shape, but don't build it on
 `@dom.Node::get_first_child` — that binding is typed plain `Node` while the DOM
@@ -223,7 +227,7 @@ For simple async with no subsystem-specific messages, use the direct helpers (al
 
 For every new FFI package:
 
-- [ ] The built-in packages genuinely don't cover this (checked `@http`, `@websocket`, `@clipboard`, `@nav`, `@dialog`, `@indexeddb`, `@sub`)
+- [ ] The built-in packages genuinely don't cover this (checked `@http`, `@websocket`, `@clipboard`, `@nav`, `@dialog`, `@url`, `@sub`)
 - [ ] `pub struct FooHandle(@js.Value)` — opaque wrapper
 - [ ] `pub fn FooHandle::dummy() -> FooHandle` — empty JS object for testing
 - [ ] All `extern "js"` functions are **not** `pub`
@@ -231,7 +235,7 @@ For every new FFI package:
 - [ ] Method wrappers (`fn FooHandle::method`) are **not** `pub`
 - [ ] Public API takes `Emit[Msg]` for event wiring; callers adapt with `emit.map`
 - [ ] JS promises bridged with `@js.Promise` (`moonbit-community/rabbita/js`, an alias of `@js_async.Promise` on 0.16) via `.wait()` / `Promise::from_async`; no hand-rolled scheduler
-- [ ] Externs returning DOM collections snapshot with `Array.from(...)` — never hand back a live `HTMLCollection`/`NodeList` typed as `Array[T]`; callers of `get_children()` snapshot with `.iter().to_array()` before mutating
+- [ ] Externs returning DOM collections snapshot with `Array.from(...)` into `FixedArray[T]` — never hand back a live `HTMLCollection`/`NodeList`, and never `Array[T]` at the JS boundary (deprecated); callers of `get_children()` snapshot with `.iter().to_array()` before mutating
 - [ ] DOM-bound widget lifecycle owned by a subscription (unload = dispose) rather than a user-callable `close` Cmd; keyed string-id registries only for non-DOM resources (websocket-style)
 
 This makes it **impossible** for update to call side effects directly — the only public API returns `Cmd`.
