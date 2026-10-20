@@ -18,8 +18,8 @@ silently corrupt memory or leak resources. ASan catches them at runtime:
 ## Quick Start
 
 The skill includes `scripts/run-asan.mbtx` which automates the full workflow.
-It uses `moonbitlang/parser/moon_config` for proper `moon.pkg` DSL parsing
-instead of regex. It also works in CI environments.
+It parses `moon.pkg` with `moonbitlang/moon_config` instead of regex. It also
+works in CI environments.
 
 Single package:
 
@@ -37,15 +37,15 @@ moon run --target native scripts/run-asan.mbtx -- \
   --pkg main/moon.pkg
 ```
 
-The `--pkg` argument accepts both `moon.pkg` (DSL format) and `moon.pkg.json`
-(JSON format). If the specified file doesn't exist, the script tries the other
-format automatically.
+`--pkg` accepts a `moon.pkg` path or a package directory. Legacy
+`moon.pkg.json` is not supported (current moon rejects it) — run `moon fmt` to
+migrate first.
 
 Note for multiple packages, you need to include all packages with `native-stub`
 and all entry packages. A package is an entry package if:
 
-1. It is configured to be a main package, that is `is-main` set to true in
-   `moon.pkg`/`moon.pkg.json`.
+1. It is an executable package (`pkgtype(kind: "executable")`, or the
+   deprecated `"is-main": true`).
 2. It contains tests.
 
 ---
@@ -58,20 +58,27 @@ manual setup or debugging.
 ### 1. Disable mimalloc
 
 MoonBit bundles mimalloc as its allocator via `libmoonbitrun.o`. mimalloc
-intercepts `malloc`/`free`, preventing ASan from tracking allocations. The
-script replaces `libmoonbitrun.o` with an empty compiled object and restores
-it afterward. Pass `--no-disable-mimalloc` to skip this step.
+intercepts `malloc`/`free`, preventing ASan from tracking allocations, so the
+script disables it for the run (`--no-disable-mimalloc` skips this step).
 
-The same empty-object replacement also fixes allocator conflicts with
-libraries dlopen'd by MoonBit executables on Linux — see pitfall 12 in `c.md`.
+Manually, set `MOONBIT_ALLOCATOR=system` for the `moon test` run (moon
+0.1.20261016: compiles the runtime against libc `malloc` and stops linking
+`libmoonbitrun.o`); a `MOON_CC` override — which the script sets on macOS —
+disables mimalloc the same way. Replacing `libmoonbitrun.o` with an empty
+object no longer works on its own: the runtime now references
+`mi_malloc`/`mi_free` directly, so a default (mimalloc) build fails to link.
+Same switch for dlopen allocator conflicts — see pitfall 12 in `c.md`.
 
 ### 2. Package config patching
 
 ASan flags must be injected into package config files. The script snapshots
-each file, parses it (`moon.pkg` DSL via `@moon_config.parse_moon_pkg` from
-`moonbitlang/parser/moon_config`, JSON via `@json.parse`), patches the config in memory,
-writes the patched version back, and restores the originals after the test
-run:
+each `moon.pkg`, parses it with `@moon_config.parse_moon_pkg`, and rewrites
+only the `link` value in place (or inserts `link:` into the existing
+`options(...)`, or appends an `options(link: ...)` block), so every other
+declaration — `pkgtype(...)`, `supported_targets`, rules — survives verbatim.
+Originals are restored after the run, also on cancellation (`defer` +
+`@async.protect_from_cancel`). A boolean `link: true` aborts with a request to
+migrate to `pkgtype(kind: "foreign_library")` first:
 
 | Field | How it's patched | Why |
 |---|---|---|
@@ -79,7 +86,8 @@ run:
 | `stub-cc-flags` | **Append** the same flags to existing value | Instruments C stub files (preserves `-I`, `-D` flags and build variables) |
 
 Patch `stub-cc-flags` on all packages with `native-stub` (unconditionally safe to
-patch all packages). Patch `cc-flags` on all entry packages (`is-main` or test).
+patch all packages). Patch `cc-flags` on all entry packages (executable or test).
+By hand, the fields live at `options(link: { "native": { ... } })`.
 
 ### Environment variables
 
@@ -126,15 +134,9 @@ On minimal images, install `libasan` (e.g., `apt-get install libasan6`).
 
 ### Windows
 
-Use `cl.exe` with `/Z7 /fsanitize=address` for compilation. To disable
-mimalloc manually:
-
-```powershell
-echo "" >dummy_libmoonbitrun.c
-$moon_home = if ($env:MOON_HOME) { $env:MOON_HOME } else { "$env:USERPROFILE\.moon" }
-$out_path = Convert-Path "$moon_home\lib\libmoonbitrun.o"
-cl.exe dummy_libmoonbitrun.c /c /Fo: $out_path
-```
+Use `cl.exe` with `/Z7 /fsanitize=address` for compilation. moon never links
+mimalloc into MSVC builds, so there is nothing to disable; for other compilers
+set `$env:MOONBIT_ALLOCATOR = "system"`.
 
 ---
 

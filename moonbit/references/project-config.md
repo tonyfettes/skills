@@ -21,6 +21,18 @@ moon add moonbitlang/x@0.4.6  # specific version
 moon update                   # update package index
 ```
 
+### Finding packages
+
+```sh
+moon search <keyword> [--json]           # registry search (modules + package summaries)
+moon view user/module[@version]          # registry metadata; --versions lists every release
+moon view <username>                     # a user's published modules
+```
+
+`moon view --versions` also shows registry deprecations; a deprecated
+dependency prints a warning on resolution (e.g. `tonyfettes/platform` →
+"Use @async.platform instead").
+
 ### Browsing third-party source (`moon fetch`)
 
 `moon fetch <author>/<module>[@<version>]` downloads a package's source into
@@ -29,7 +41,7 @@ generated `.mbti`). It does NOT add the package to `moon.mod` — use `moon add`
 for that. Add `.repos/` to `.gitignore`.
 
 ```sh
-moon fetch moonbitlang/async@0.18.1
+moon fetch moonbitlang/async@0.22.5
 ```
 
 ## `moon.mod` (module metadata)
@@ -44,14 +56,11 @@ keywords = []
 description = "..."
 preferred_target = "native"   # optional: default backend when none is specified
 source = "src"                # optional: default is "."
+private = true                # optional: `moon publish` refuses the module
 
 import {
   "moonbitlang/x@0.4.6",
 }
-
-options(
-  "preferred-target": "native",
-)
 ```
 
 `source` is a top-level `moon.mod` field. Current `moon fmt` normalizes
@@ -59,12 +68,14 @@ options(
 
 Use `moon add moonbitlang/x@0.4.6` and `moon remove moonbitlang/x` to manage the
 `import` block instead of editing dependency versions by hand. For FFI/native
-modules, set `"preferred-target": "native"` so `moon build`/`moon test`/`moon run`
+modules, set `preferred_target = "native"` so `moon build`/`moon test`/`moon run`
 default to native.
 
-Legacy projects may still contain `moon.mod.json`; treat it as the old module
-metadata format and migrate/update guidance to `moon.mod` instead of creating
-new `moon.mod.json` files.
+**Legacy JSON manifests are rejected.** Since moon 0.1.20261016 ordinary
+commands fail on `moon.mod.json` / `moon.pkg.json` with "no longer supported.
+Run `moon fmt` to migrate". `moon fmt` converts them to `moon.mod` /
+`moon.pkg` (deleting the JSON files) — run it, review the diff, commit. Never
+create new JSON manifests.
 
 ## `moon.work` (workspace manifest)
 
@@ -115,10 +126,16 @@ import {
 import {
   "username/hello/internal_test_helpers",
 } for "wbtest"
-options(
-  "is-main": true,
-)
+pkgtype(kind: "executable")
 ```
+
+`pkgtype(kind: ...)` sets the package kind: `"library"` (default),
+`"executable"` (has `fn main`; replaces the deprecated
+`options("is-main": true)`), or `"foreign_library"` (force-linked for foreign
+consumers; replaces the deprecated `options(link: true)`). `moon fmt` rewrites
+the deprecated spellings. Keep executables as entry points only: importing an
+executable package from another package warns now and is slated to become an
+error — move reusable code into a library package.
 
 Use `supported_targets = "<target-set>"` at top level when the whole package
 only supports selected backends: `"native"` (single), `"+js+wasm-gc"` (explicit
@@ -127,9 +144,7 @@ effective set is the module∩package intersection.
 
 ```
 supported_targets = "native"
-options(
-  "is-main": true,
-)
+pkgtype(kind: "executable")
 ```
 
 Command behavior: `moon check/build/test/bench` keep only packages supporting
@@ -139,30 +154,21 @@ dependency-path error. Omitting the field means all backends. For
 backend-specific **main** packages, `supported_targets` must accompany
 file-level `targets` — see the pitfall in "Conditional compilation".
 
-Other `options(...)` fields (note: object keys inside `{ }` must be quoted
-strings in the DSL — unquoted keys are a parse error):
+Other top-level declarations (`moon fmt` moves the old `options(...)`
+spellings to these):
 
-- `formatter: { "ignore": ["generated.mbt"] }` — files `moon fmt` skips (pre-build outputs are skipped automatically)
-- `"max-concurrent-tests": 2` — cap parallel tests in this package (shared ports/temp files)
-- `"test-import-all": true` — import all public defs into black-box tests (deprecated; prefer `fnalias`)
+- `formatter(ignore: [ "generated.mbt" ])` — files `moon fmt` skips (pre-build outputs are skipped automatically)
+- `max_concurrent_tests = 2` — cap parallel tests in this package (shared ports/temp files); `moon test` runs test executables in parallel by default
+- `regex_backend = "table"` — `auto` / `block` / `table` / `runtime`
+- `virtual(...)` — see "Virtual packages" below
 
-Legacy `moon.pkg.json`:
-```json
-{
-  "is_main": true,
-  "import": [
-    "username/hello/liba",
-    {
-      "path": "moonbitlang/x/encoding",
-      "alias": "libb"
-    }
-  ],
-  "test-import": [...],
-  "wbtest-import": [...]
-}
-```
+Settings without a direct form stay in `options(...)` (object keys inside
+`{ }` must be quoted strings — unquoted keys are a parse error): `targets`,
+`link`, `"native-stub"`, `overrides`, `"bin-name"`, `"bin-target"`, legacy
+`"pre-build"`. `"test-import-all": true` is deprecated (`deprecated_syntax`
+warning) — use explicit `using` declarations instead.
 
-Packages are per directory. Directories without a `moon.pkg` / `moon.pkg.json` are not recognized as packages.
+Packages are per directory. Directories without a `moon.pkg` are not recognized as packages.
 
 ### Virtual packages
 
@@ -171,14 +177,19 @@ implementation downstream users can swap — e.g. replacing
 `moonbitlang/core/abort` behavior:
 
 ```
-// interface package: options("virtual": { "has-default": true })
-//   — quote "virtual" (reserved word); has-default means it ships a fallback impl
-// implementing package: options(implement: "moonbitlang/core/abort")
-// consumer (main) package: options(overrides: [ "moonbitlang/dummy_abort/abort_show_msg" ])
+// interface package (pkg.mbti declares the API):
+virtual(has_default: true)   // true = ships a fallback impl
+// implementing package:
+virtual(implement: "moonbitlang/core/abort")
+// consumer (executable) package:
+options(overrides: [ "moonbitlang/dummy_abort/abort_show_msg" ])
 ```
 
-Consumers that don't list an override get the default implementation (if
-`has-default` is true).
+A package declares `virtual(...)` at most once — `has_default` and
+`implement` cannot be combined. Consumers that don't list an override get the
+default implementation (if `has_default` is true). The old spellings
+`options("virtual": { "has-default": ... })` / `options(implement: ...)` are
+still accepted and rewritten by `moon fmt`.
 
 ## Package importing & aliases
 
@@ -236,7 +247,11 @@ The `moonbitlang/core` module is always available without adding it to
 `moon.mod` dependencies. Ordinary core packages still need explicit `moon.pkg`
 imports for package aliases such as `@utf8`, `@json`, or `@strconv`; add imports
 like `"moonbitlang/core/encoding/utf8"` when the compiler reports a missing or
-implicit core package.
+implicit core package. Both directions warn on moonc v0.10.16: naming `@json` /
+`@test.Test` / `@bench.T` without the import is `core_package_not_imported`
+(0071) — `derive(FromJson)` counts as using `@json` — and an import used only
+through a prelude name (e.g. `Buffer()` with `core/buffer` imported) is
+`unused_package` (0029).
 
 The stdlib includes `@argparse` (`import { "moonbitlang/core/argparse" }`) —
 the first choice for CLI argument parsing; never hand-roll an argv loop. API
@@ -264,32 +279,20 @@ backpressure.
 
 ## Conditional compilation
 
-Gate individual `.mbt` files to backends/modes. In modern `moon.pkg` DSL,
-`targets` goes inside `options(...)`:
+Gate individual `.mbt` files to backends/modes. `targets` goes inside
+`options(...)`:
 
 ```
 options(
   targets: {
-    "wasm_only.mbt": ["wasm"],
-    "js_only.mbt": ["js"],
-    "not_js.mbt": ["not", "js"],
+    "wasm_only.mbt": [ "wasm" ],
+    "js_only.mbt": [ "js" ],
+    "debug_only.mbt": [ "debug" ],
+    "wasm_or_js.mbt": [ "wasm", "js" ],
+    "not_js.mbt": [ "not", "js" ],
+    "complex.mbt": [ "or", [ "and", "wasm", "release" ], [ "and", "js", "debug" ] ],
   },
 )
-```
-
-Legacy `moon.pkg.json` equivalent:
-
-```json
-{
-  "targets": {
-    "wasm_only.mbt": ["wasm"],
-    "js_only.mbt": ["js"],
-    "debug_only.mbt": ["debug"],
-    "wasm_or_js.mbt": ["wasm", "js"],
-    "not_js.mbt": ["not", "js"],
-    "complex.mbt": ["or", ["and", "wasm", "release"], ["and", "js", "debug"]]
-  }
-}
 ```
 
 Available conditions:
@@ -302,7 +305,7 @@ controls which backends a *file* compiles on; package-level `supported_targets`
 (see the `moon.pkg` section) controls which backends the *package* exists on.
 A wasm-only executable with only `targets: { "main.mbt": ["wasm"] }` fails
 `moon check --target native` with E4067 "Missing main function in the main
-package" — main.mbt is skipped but the package is still `is-main`. Add
+package" — main.mbt is skipped but the package is still an executable. Add
 `supported_targets = "wasm"` so root-level checks skip the whole package
 (explicitly checking that package path with `--target native` then errors with
 "does not support target backend", which is the expected semantics).
@@ -317,30 +320,28 @@ matrix with `moon check --deny-warn --target all` and `moon test --target all`.
 
 ## Link configuration
 
-In modern `moon.pkg` DSL, use a top-level `link(...)` block. The native form is
-well-established (see `ffi/c.md` / `ffi/c-sources.md`):
+`link` lives inside `options(...)` with quoted keys. There is **no**
+top-level `link(...)` declaration — `link(native(...))` is a parse error
+("unexpected token native").
 
 ```
-link(
-  native(
-    "cc-flags": "-I/path/to/include",
-    "cc-link-flags": "-L/path/to/lib -lmylib",
-  )
+options(
+  link: {
+    "native": {
+      "cc-flags": "-I/path/to/include",
+      "cc-link-flags": "-L/path/to/lib -lmylib",
+    },
+  },
 )
 ```
 
-For the full per-backend option set (wasm/js exports, memory options, output
-format), the legacy JSON keys below are the reference. The same keys work in
-`moon.pkg` DSL as quoted strings inside `options(link: { "wasm": { ... } })`
-(verified) — object keys must be quoted.
+Full per-backend key set (`//` comments are annotations only). To force-link
+a non-executable package, use `pkgtype(kind: "foreign_library")`, not the
+deprecated boolean `link: true`.
 
-Legacy `moon.pkg.json`:
-
-```json
-{
-  "link": true,                          // enable linking for this package
-  // OR for advanced cases:
-  "link": {
+```
+options(
+  link: {
     "wasm": {
       "exports": ["hello", "foo:bar"],
       "heap-start-address": 1024,
@@ -369,14 +370,13 @@ Legacy `moon.pkg.json`:
       "cc-flags": "-O2 -DMOONBIT",
       "cc-link-flags": "-s"
     }
-  }
-}
+  },
+)
 ```
 
 ## Warning control
 
-In modern `moon.mod` / `moon.pkg` DSL configs, use the top-level `warnings`
-field. It is translated by the toolchain to the legacy `warn-list` key.
+In `moon.mod` / `moon.pkg`, use the top-level `warnings` field.
 
 ```
 warnings = "+unnecessary_annotation"  // enable warning 73
@@ -397,25 +397,19 @@ moon check --warn-list +unnecessary_annotation
 moon check --warn-list +73
 ```
 
-In legacy JSON configs (`moon.mod.json` or `moon.pkg.json`), the key is still
-`warn-list`:
-
-```json
-{
-  "warn-list": "-2-29"                   // disable unused variable (2) & unused package (29)
-}
-```
-
-Common warning numbers:
-- `1` — unused function
+Common warning numbers (moonc v0.10.16 defaults):
+- `1` — unused function/value
 - `2` — unused variable
-- `11` — partial pattern matching
+- `11` / `partial_match` — partial pattern matching (**error** by default)
 - `12` — unreachable code
-- `29` — unused package
-- `73` / `unnecessary_annotation` — redundant annotations and over-qualified constructors
+- `25` / `test_unqualified_package` — blackbox test uses an implicitly imported name; write `@pkg.name`
+- `29` / `unused_package` — unused import, now including unused explicit `moonbitlang/core/*` imports
+- `71` / `core_package_not_imported` — core package used without an explicit `import`
+- `73` / `unnecessary_annotation` — redundant annotations and over-qualified constructors (off by default)
+- `82` / `ambiguous_braces` — bare `{}` (empty map / block / struct / JSON); write `Map([])`, `{ () }`, `T::{}`, or `Json::empty_object()`
 
-Run `moonc check -warn-help` to see all available warnings (mnemonic, id, and
-default state).
+Run `moon explain --diagnostics` to see all available warnings (mnemonic, id,
+and default state).
 
 ## Pre-build commands (`rule` / `dev_build`)
 
@@ -436,9 +430,11 @@ dev_build(rule: "embed", input: "data.txt", output: "embedded.mbt")
   commit the generated outputs so downstream builds work.
 - Generated outputs are skipped by `moon fmt` automatically.
 
-Legacy `moon.pkg.json` uses
-`"pre-build": [{ "input": "data.txt", "output": "embedded.mbt", "command": "..." }]`
-(`rule`/`dev_build` are DSL-only).
+The older `options("pre-build": [{ "input": ..., "output": ..., "command": ... }])`
+form still works; prefer `rule`/`dev_build`. Moon no longer runs `moonlex` /
+`moonyacc` on `.mbl` / `.mby` files automatically: declare them as a
+`dev_build` input with an explicit generator rule (an undeclared `.mbl`/`.mby`
+in a package is a migration error), and commit the generated `.mbt`.
 
 Generated code example:
 

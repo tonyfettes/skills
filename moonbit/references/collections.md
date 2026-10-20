@@ -65,8 +65,8 @@ This is the construction-side counterpart of the `..` rest pattern.
 ///|
 test "map literals and common operations" {
   let map : Map[String, Int] = { "a": 1, "b": 2, "c": 3 }
-  let empty : Map[String, Int] = {}                     // literal, preferred
-  let also_empty : Map[String, Int] = Map([])           // Map::new() is deprecated; Map([], capacity=...) to presize
+  let empty : Map[String, Int] = Map([])                // bare `{}` warns ambiguous_braces (0082)
+  let sized : Map[String, Int] = Map([], capacity=64)   // Map::new() is deprecated
   let from_pairs : Map[String, Int] = Map::from_array([("x", 1), ("y", 2)])
 
   map["new-key"] = 3
@@ -97,7 +97,11 @@ Zero-copy, non-owning read-only slices created with `[:]` syntax. No allocation.
 - `Bytes` → `BytesView` via `b[:]`, `b[start:end]`, etc.
 - `Array[T]` / `FixedArray[T]` / `ReadOnlyArray[T]` → `ArrayView[T]` via `a[:]`, etc.
 
-**StringView caveat**: `s[a:b]` may raise at surrogate boundaries (UTF-16 edge case). Use `try! s[a:b]` if certain, or propagate the error.
+**Slicing clamps** (moonc ≥ 0.10.13): out-of-range bounds are clamped,
+negative bounds become 0, and an inverted range is empty — `[1, 2, 3][1:10]`
+has length 2, no abort. A string bound that splits a surrogate pair moves
+inward. Use `exact_view(start~, end~)` when a bad range should abort, or
+`get_view(...)` for `None` on a bad range.
 
 Use views for:
 - Rest patterns (`[first, .. rest]`)

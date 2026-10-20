@@ -77,7 +77,7 @@ To build a struct value from an existing one with a few fields changed, use the
 functional-update spread — **two dots** (`..`), not JS's three:
 
 ```moonbit
-struct Style { fg : Color; bg : Color; flags : UInt } derive(Eq)
+struct Style { fg : Color; bg : Color; flags : UInt }
 
 fn Style::with_fg(self : Style, fg : Color) -> Style { { ..self, fg } }
 fn Style::with_flags(self : Style, flags : UInt) -> Style { { ..self, flags, } }
@@ -115,12 +115,13 @@ Instead:
 
 ### Module-level constants: `const PascalCase`
 
-Use `const PascalCase` for module-level compile-time constants (strings, numbers). `const` requires an **uppercase** identifier — lowercase forces `let`:
+Use `const PascalCase` for module-level compile-time constants. `const` requires an **uppercase** identifier and an immutable primitive type (numbers, `Char`, `Bool`, `String`); a collection is error 4143 and stays a lowercase top-level `let`:
 
 ```mbt nocheck
-const DefaultScopes : Array[String] = ["read", "write"]  // ✓ correct
+const DefaultScope : String = "read"                     // ✓ correct
 const PI : Double = 3.14159                              // ✓ also common: UPPER_SNAKE
-// let default_scopes : Array[String] = [...]            // ✗ outdated for new code
+let default_scopes : ReadOnlyArray[String] = ["read", "write"]  // ✓ arrays: `let`
+// const DefaultScopes : Array[String] = [...]           // ✗ error 4143
 ```
 
 ### Shared constructor names need the type when nothing infers it
@@ -177,7 +178,7 @@ This applies **in tests too** — prefer raising over panicking, e.g.
 `guard parsed is Some(v) else { fail("parse failed: \{input}") }`, not
 `guard! parsed is Some(v)`.
 
-### String indexing is UTF-16; slicing can crash
+### String indexing is UTF-16; indexing can crash
 
 `String[i]` returns a `UInt16` (UTF-16 code unit), NOT a `Char`:
 
@@ -187,9 +188,14 @@ let b0 : UInt16 = s[0]                 // code unit
 let c0 : Char? = s.get_char(0)          // option<char>
 ```
 
-`String[i]` is also not a safe general-purpose text operation. Direct indexing
-and `s[a:b]` slicing can abort or raise at UTF-16 surrogate boundaries. Avoid
-abort-prone string operations whenever practical.
+`String[i]` is also not a safe general-purpose text operation: it aborts out of
+range and can land inside a surrogate pair. Bracket slicing `s[a:b]` no longer
+aborts (moonc ≥ 0.10.13): bounds are clamped to the string, an inverted range is
+empty, and a bound that splits a surrogate pair moves inward — so it can
+silently drop a character (`split_at(i)` partitions losslessly).
+`exact_view(start~, end~)` is the strict form (aborts on a bad bound);
+`get_view` returns `None` instead. The same clamping applies to
+`Array`/`Bytes`/view slicing.
 
 Prefer these patterns instead:
 
@@ -204,12 +210,12 @@ Prefer these patterns instead:
 
 Do not default to `[]` indexing or `[:]` slicing for user text.
 
-**Safe string truncation** is `clamped_view`: it clamps the range to the
-string and snaps to a character boundary, so a surrogate pair is dropped whole
-rather than split (`s[:N]` and `substring(end=N)` abort there):
+**Safe string truncation** is plain slicing (or the equivalent
+`clamped_view`): the range is clamped and a surrogate pair is dropped whole
+rather than split (`substring` is deprecated — use `s[:]`):
 
 ```mbt nocheck
-let short = text.clamped_view(end=max).to_owned()      // at most one char shorter than max
+let short = text[:max].to_owned()                      // at most one char shorter than max
 ```
 
 To bound text by an external **UTF-8 byte** limit, clamp UTF-16 units to a
@@ -217,7 +223,7 @@ third of it: every code unit encodes to at most three bytes, so the result
 can never exceed the limit, with no per-character byte counting:
 
 ```mbt nocheck
-let title = title.trim().clamped_view(end=1024 / 3).to_owned()   // ≤ 1024 UTF-8 bytes
+let title = title.trim()[:1024 / 3].to_owned()   // ≤ 1024 UTF-8 bytes
 ```
 
 ### `trim`/slicing return `StringView`, not `String`
@@ -290,7 +296,7 @@ Don't bother with an explicit alias if it matches the last path segment.
 - **Packages**: No `import` in code files — call via `@alias.fn`. Configure imports in `moon.pkg`.
 - **Placeholders**: `...` is a valid placeholder for incomplete implementations.
 - **Global values**: immutable by default; generally require type annotations.
-- **Garbage collection**: MoonBit has a GC — no lifetime annotations, no ownership system. Unlike Rust (like F#), `let mut` is only needed when you want to **reassign** a variable — NOT for mutating fields of a struct or elements of an array/map.
+- **Garbage collection**: MoonBit has a GC — no lifetime annotations, no ownership system. Unlike Rust (like F#), `let mut` is only needed when you want to **reassign** a variable — NOT for mutating fields of a struct or elements of an array/map. `var x = ...` is deprecated syntax (warns) — write `let mut x = ...`.
 - **Toplevel functions are mutually recursive by default** — no need for forward declarations. Local functions are not: use `letrec f = .. and g = ..` (see below).
 - **Ranges**: `a..<b` (exclusive) / `a..=b` (inclusive) iterate increasing; **decreasing** ranges are `a>..b` (excludes `a`) and `a>=..b` (includes `a`) — `for i in 3>..0` yields `2, 1, 0`; `for i in 3>=..0` yields `3, 2, 1, 0`.
 
@@ -355,7 +361,7 @@ MoonBit passes most types by reference semantically (optimizer may copy immutabl
 
 ```mbt check
 ///|
-struct Counter {
+priv struct Counter {
   mut value : Int
 }
 
@@ -465,7 +471,7 @@ fn f_correct(a? : Int, b? : Int = 1) -> Unit {
 
 ```mbt check
 ///|
-struct APIOptions {
+priv struct APIOptions {
   width : Int?
   height : Int?
 }

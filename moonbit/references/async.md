@@ -22,24 +22,23 @@ timers, cancellation), `@async/aqueue`, `@async/fs`, `@async/stdio`,
 1. Add the dependency and pin the native target in `moon.mod`:
    ```
    import {
-     "moonbitlang/async@0.18.1",
+     "moonbitlang/async@0.22.5",
    }
 
    options(
      "preferred-target": "native",
    )
    ```
-2. In the executable's `moon.pkg`, set `is-main`, restrict to native, and import
-   what you need:
+2. In the executable's `moon.pkg`, mark it executable, restrict to native, and
+   import what you need (`options("is-main": true)` is the deprecated
+   spelling; `moon fmt` rewrites it to `pkgtype`):
    ```
    import {
      "moonbitlang/async",
      "moonbitlang/async/stdio",
    }
    supported_targets = "native"
-   options(
-     "is-main": true,
-   )
+   pkgtype(kind: "executable")
    ```
 3. Define `async fn main` and call async functions normally. There is no
    `await` keyword. Spawn concurrent tasks via `with_task_group` for structured
@@ -137,7 +136,18 @@ write it, and remove it when touching code that has it.
 body, where the loop would otherwise keep retrying while the task is being
 cancelled. To react to cancellation itself, use
 `@async.handle_cancellation(f)` (returns `None` when `f` was cancelled; the
-task stays cancelled) or `@async.with_cancellation_handler(f, handler=...)`.
+task stays cancelled). `with_cancellation_handler` is deprecated in its favor
+(async 0.22.5).
+
+### `nocancel` functions
+
+`async fn f() -> T nocancel` declares a function that cannot be interrupted
+by cancellation. The compiler checks it: a `nocancel` body may call sync or
+`nocancel` functions only — calling a cancellable async function is error 4227.
+`@async.protect_from_cancel(f)` is itself `nocancel`, so it is the bridge for
+running cancellable code inside one. In async 0.22.x, `@fs.remove` and
+`@fs.rmdir` are `nocancel` (safe in cleanup); `sleep`, socket and process IO
+are cancellable.
 
 ## Cancellation-safe cleanup
 
@@ -148,9 +158,17 @@ in `defer`/`errdefer`, `TaskGroup::add_defer`, or react with
 `@async.handle_cancellation`. Any **async operation inside the cleanup** is
 itself cancelled immediately while the task is being cancelled.
 Must-complete async cleanup (terminal-state restore, external-resource
-release) needs `@async.protect_from_cancel` or `TaskGroup::add_defer` with
-the same protection inside. Refinements from
-production review:
+release) needs `@async.protect_from_cancel`. `TaskGroup::add_defer` takes an
+`async () -> Unit nocancel` callback, so cancellable work in it must be wrapped
+in `protect_from_cancel` (with a hard timeout) — the compiler rejects it
+otherwise:
+
+```mbt nocheck
+defer @async.protect_from_cancel(() => restore_terminal())   // must-complete
+group.add_defer(() => @fs.remove(tmp) catch { _ => () })        // nocancel already
+```
+
+Refinements from production review:
 
 - In practice, protect only the cancelled path and leave the normal path
   cancellable — otherwise `with_timeout` over the whole operation can no
@@ -176,6 +194,18 @@ production review:
 passes; `with_timeout_opt` returns `None` instead. When a timeout is a failure
 of the operation, use the raising form so it flows through the same `catch`
 as every other transport error rather than becoming a second branch.
+
+## Small API notes (async 0.22.5)
+
+- `@async.platform` (`Linux | MacOS | Windows`) replaces the third-party
+  `tonyfettes/platform` package for OS checks: `if @async.platform is Windows`.
+- `@fs.write_file(path, data, create_mode?, permission?, sync?, append?)` —
+  the old `create=0o644` argument no longer exists; pass
+  `create_mode=CreateOrTruncate` (or `OpenExisting`, `TruncateExisting`,
+  `OpenOrCreate`, `CreateNew`) and `permission=0o644`.
+- `@socket.TcpServer(addr, reuse_port_lb=true)` sets `SO_REUSEPORT` so several
+  worker processes can bind one address with kernel load balancing — Linux
+  only; ignored on macOS/BSD/Windows.
 
 ## One-shot HTTP requests (`@http`)
 

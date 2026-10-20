@@ -99,10 +99,10 @@ Review `.mbti` after `moon info` with this lens:
 
 ```mbt check
 ///|
-struct Point {
+priv struct Point {
   x : Int
   mut y : Int                                // `mut` allows field mutation
-} derive(Debug, ToJson, Eq)
+}
 
 ///|
 /// `Type::` can be omitted when the type is already known in context
@@ -120,7 +120,7 @@ test "mut field" {
 pub(all) struct Config {
   host : String
   port : Int
-} derive(Debug, Eq, ToJson, FromJson)
+}
 ```
 
 ### Custom struct constructors: `fn Type::Type(...)`
@@ -129,7 +129,7 @@ A method named after its own struct becomes a constructor — `TypeName(args)` t
 
 ```mbt check
 ///|
-struct IntBox {
+priv struct IntBox {
   value : Int
 }
 
@@ -139,7 +139,7 @@ fn IntBox::IntBox(value : Int) -> IntBox {
 }
 
 ///|
-struct Sized {
+priv struct Sized {
   x : Int
   y : Int
 }
@@ -150,10 +150,10 @@ fn Sized::Sized(x~ : Int, y? : Int = x) -> Sized {   // labelled + optional, def
 }
 
 ///|
-suberror NegativeInput
+priv suberror NegativeInput
 
 ///|
-struct Positive {
+priv struct Positive {
   value : Int
 }
 
@@ -183,13 +183,13 @@ Unlike enum constructors, struct constructors can NOT be used in pattern matchin
 enum Tree[T] {
   Leaf(T)                                           // no trailing comma
   Node(left~ : Tree[T], T, right~ : Tree[T])        // variants can use labels
-} derive(Debug, ToJson)
+}
 
 ///|
 pub enum MyResult[T, E] {
   MyOk(T)                                           // semicolon optional when newline follows
   MyErr(E)                                          // variants must start Uppercase
-} derive(Debug, Eq, ToJson)
+}
 
 ///|
 pub fn Tree::sum(tree : Tree[Int]) -> Int {
@@ -206,7 +206,7 @@ Only **labelled** constructor fields can be `mut`. Bind the matched constructor 
 
 ```mbt check
 ///|
-enum Chain {
+priv enum Chain {
   End
   Link(mut value~ : Int, mut next~ : Chain)
 }
@@ -228,10 +228,9 @@ test "mutable constructor fields" {
 
 ```mbt nocheck
 // pkg base:
-pub(all) extenum LogEvent[T] {
+pub extenum LogEvent[T]                       // declaration: no constructors here
+pub(all) extenum LogEvent[T] += {             // constructors go in `+=` blocks
   Info(T)
-}
-pub(all) extenum LogEvent[T] += {             // append in the same package
   Warning(T)
 }
 
@@ -254,10 +253,40 @@ pub fn describe(event : @base.LogEvent[String]) -> String {
 - Constructors are qualified by the package that **defines the constructor** (`@plugin.Debug`), not the type's package; unqualified names work for current-package constructors when the expected type is known.
 - Fully explicit form: `@base.LogEvent::@plugin.Debug(msg)` (type package + constructor package).
 - A `match` without a wildcard arm is a partial-match error — new constructors can always appear elsewhere.
+- Visibility sits on each `+=` block: `pub` constructors are matchable outside
+  but not constructible (4036); `pub(all)` allows outside construction.
+  Constructors in the declaration itself (`pub(all) extenum E { A }`) are
+  deprecated syntax (verified on moonc 0.10.16).
 
-### Local types are deprecated
+### `#non_exhaustive` enums
 
-Declaring a `struct`/`enum` inside a function body emits `deprecated_syntax` (*"local type definition ... is deprecated. Use toplevel type definition instead"*) on current toolchains, even though older docs present it as a feature. Define types at toplevel.
+`#non_exhaustive` on a public enum reserves the right to add constructors. In
+**other** packages, a `match` must end with a `TypeName::..` arm even when
+every current constructor is listed (otherwise `partial_match`, an error); a
+`_` arm after all known constructors warns `unused_pattern` and suggests
+`TypeName::..`. Using `T::..` on an ordinary enum warns (0093).
+
+```mbt nocheck
+// pkg base:
+#non_exhaustive
+pub(all) enum Mode {
+  Fast
+  Slow
+}
+
+// pkg app:
+match mode {
+  Fast => "fast"
+  Slow => "slow"
+  @base.Mode::.. => "newer mode"              // required outside `base`
+}
+```
+
+### No local types
+
+A `struct`/`enum` declared inside a function body is a parse error on current
+toolchains (it was deprecated earlier), even though older docs present it as a
+feature. Define types at toplevel.
 
 ### Newtype / tuple-struct
 
@@ -265,7 +294,7 @@ Single-field structs with positional syntax. Access via `.0`, `.1`, etc.
 
 ```mbt check
 ///|
-struct Meters(Int)
+priv struct Meters(Int)
 
 ///|
 let distance : Meters = Meters(100)
@@ -302,19 +331,23 @@ Most types can auto-derive standard traits with `derive(...)`:
 
 ```mbt check
 ///|
-struct Coordinate {
+priv struct Coordinate {
   x : Int
   y : Int
 } derive(Debug, Eq, ToJson)
 
 ///|
-enum Status {
+priv enum Status {
   Active
   Inactive
 } derive(Debug, Eq, Compare)
 ```
 
 **Best practice**: always derive `Debug` and `Eq` for data types; add `ToJson` if you test them with `json_inspect()`. Reserve `Show` for genuine display formats via a manual `impl`.
+
+Derives on a non-`priv` type warn `implicit_impl_as_method` (0079) until
+`pub extend T with Trait::{...}` lines say which methods stay — see
+`derive.md` ("Derives and `extend` lines").
 
 ---
 
@@ -408,10 +441,12 @@ test "pattern matching on Array, struct, StringView" {
   }
 
   fn is_palindrome(s : StringView) -> Bool {
-    loop s {
-      [] | [_] => true
-      [a, .. rest, b] if a == b => continue rest    // a, b are Char; rest is StringView
-      _ => false
+    for rest = s {
+      match rest {
+        [] | [_] => break true
+        [a, .. mid, b] if a == b => continue mid    // a, b are Char; mid is StringView
+        _ => break false
+      }
     }
   }
 }

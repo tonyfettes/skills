@@ -7,7 +7,9 @@ older toolchains: `moon ide goto-definition` (with its `-tags`/`-query`
 filters) was **removed** — use `peek-def` for exact lookup or
 `workspace-symbols` for fuzzy search; `workspace-symbols` is **new**; `rename`
 gained `--apply`; `hover`/`peek-def`/`find-references`/`workspace-symbols`
-gained `--json`.
+gained `--json`. Rechecked on moon 0.1.20261016: same surface plus the new
+`codelens` subcommand; `hover` accepts `--json` as well as `--output-json`;
+every subcommand also accepts a standalone `.mbtx` file.
 
 Common flags on every subcommand: `--no-check` (skip the implicit
 `moon check` that refreshes the build graph first) and `--target <backend>`
@@ -23,9 +25,10 @@ Common flags on every subcommand: `--no-check` (skip the implicit
 | `moon ide outline [dir\|file]` | Top-level symbols in a package or file, with line numbers |
 | `moon ide peek-def <sym> [--loc ...] [--json]` | Resolve a definition; inline source context |
 | `moon ide find-references <sym> [--loc ...] [--json]` | All usages of a symbol |
-| `moon ide hover [<token>] --loc ... [--output-json]` | Type signature + docstring at a location |
+| `moon ide hover [<token>] --loc ... [--json]` | Type signature + docstring at a location |
 | `moon ide rename <sym> <new> [--loc ...] [--apply]` | Semantic project-wide rename |
 | `moon ide analyze [pkg-dir...]` | Public API usage counts across dependents |
+| `moon ide codelens <file>` | JSON reference counts (local + global, `is_test` flagged) for each top-level declaration in a file — quick dead-code / test-only-usage check |
 | `moon ide gen-symbols` | Write `./symbols.jsonl` for the current package (tooling/tests only — pollutes cwd) |
 
 ## `moon ide doc` — API discovery

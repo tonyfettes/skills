@@ -20,12 +20,13 @@ imports, conditional compilation, link config, warnings, pre-build) is in
   }
   EOF
   ```
-- `moon run -e "code snippet"` — run code from a command line argument:
+- `moon run -e "code snippet"` — run `.mbtx` source from a command line argument:
   ```bash
   moon run -e 'fn main { println("Hello, MoonBit!") }'
   ```
+- `moon run --target wasm <pkg>` — run a local package as linear-memory Wasm (`moon runwasm` is deprecated); `moonx user/module/pkg@1.2.3 [args]` runs a registry executable or a `.mbtx` script without installing it
 - `moon build` — build project (`--target` supported)
-- `moon check` — type check without building. Use REGULARLY — it is fast. (`--target` supported)
+- `moon check` — type check without building. Use REGULARLY — it is fast. (`--target` supported.) A successful check also refreshes each local package's `pkg.generated.mbti` (only when its content changed; `--no-mbti` skips this), so expect `.mbti` diffs after plain `moon check`
 - `moon check --warn-list +unnecessary_annotation` — enable warning 73 for redundant annotations and over-qualified constructors
 - `moon check --target all` — type check for all backends
 - `moon info` — type check AND generate `.mbti` files. Run to see if public interfaces changed. Never edit `pkg.generated.mbti` by hand (not even whitespace cleanup) — regenerate with `moon info` and review its diff as the public-API signal.
@@ -36,7 +37,9 @@ imports, conditional compilation, link config, warnings, pre-build) is in
 - `moon add <package>` — add dependency
 - `moon remove <package>` — remove dependency
 - `moon fetch <package>[@<version>]` — download source into `.repos/` for offline reading without adding a dependency
-- `moon fmt` — format code (rewrites files); `moon fmt --check` verifies without rewriting (CI)
+- `moon fmt` — format code (rewrites files); `moon fmt --check` verifies without rewriting (CI). Also normalizes `moon.mod`/`moon.pkg` to current syntax (`pkgtype(...)`, `virtual(...)`, ...) and migrates legacy `moon.mod.json`/`moon.pkg.json`, which other commands now reject
+- `moon tree` — module dependency tree; `moon tree --package [--target <backend>] [--json]` for package-level imports
+- `moon search <keyword>` / `moon view <user/module>` — query the registry (see `project-config.md`)
 - `moon check -w` / `moon build -w` — watch mode: re-run on file changes
 - `moon doc --serve` — build and serve HTML docs locally (`-p <port>`, default 3000)
 - `moon shell-completion --shell zsh` — print completion script (bash/zsh/fish/elvish/powershell)
@@ -74,28 +77,30 @@ Then `git status` — include any files they produce in the commit.
 
 ### Test commands
 
-- `moon test` — run all tests (`--target` supported)
+- `moon test` — run all tests (`--target` supported). Test executables run **in parallel by default** (`-j N` caps it, `--no-parallelize` serializes; per-package `max_concurrent_tests` in `moon.pkg`), so tests sharing ports/temp files must not assume sequential execution
+- `moon test --outline` — list the tests that would run (with `index=`) and exit
 - `moon test --update` (or `-u`) — update snapshots
 - `moon test -v` — verbose output with test names
-- `moon test [dirname|filename]` — test specific directory or file
+- `moon test [dirname|filename|script.mbtx]` — test specific directory, file, or standalone script
 - `moon test [dirname|filename] --filter 'glob'` — run tests matching filter
   ```
   moon test float/float_test.mbt --filter "Float::*"
-  moon test float -F "Float::*"          # shortcut
+  moon test float -f "Float::*"          # shortcut
   ```
+- `moon test path/to/file_test.mbt -i 2` — run only the 3rd test of one file (`-i 0-2` for a range; `--doc-index` for doc tests)
 - `moon test --build-only` — compile tests without running them
 - `moon test -l 4` — cap snapshot-update passes for `-u` (default 256); lower it when a non-converging `inspect` keeps rewriting itself
-- Doc tests run as part of plain `moon test`; the old `--doc` flag is deprecated (no-op)
+- Doc tests run as part of plain `moon test`; never pass `--doc` / `--serial` (deprecated no-ops, removed upstream after moon 0.1.20261016)
 - `moon bench` — run `bench` blocks; select with `-p <pkg> -f <file> -i <index>`, plus `--build-only` and `--no-parallelize`. See `optimization.md` ("Benchmarking with `@bench.T`").
-- `moon coverage analyze` — coverage analysis. Common forms:
+- `moon coverage analyze` — coverage analysis (runs the instrumented tests itself). Common forms:
   ```
   moon coverage analyze -- -f summary                       # per-file %
   moon coverage analyze -- -f caret -F path/to/file.mbt     # caret marks under uncovered lines
   ```
-  Run `moon test` first to collect data, then drive missing branches via the public API. See `refactoring.md` for the full workflow, and `testing.md` ("Code coverage") for report formats and CI upload.
+  Then drive missing branches via the public API. See `refactoring.md` for the full workflow, and `testing.md` ("Code coverage") for report formats and CI upload.
 
 Testing methodology (snapshot tests with the `inspect` family, black-box
-defaults, docstring tests, `@test.T::snapshot`, error handling in tests) is in
+defaults, docstring tests, `@test.Test::snapshot`, error handling in tests) is in
 `testing.md`. Benchmarks and profiling: `optimization.md`.
 
 ## README.mbt.md generation
@@ -137,7 +142,7 @@ declare pub fn parse_yaml(s : String) -> Yaml raise
 ## `.mbtx` standalone scripts
 
 MoonBit `.mbtx` is a single-file script format that runs without a surrounding
-`moon.mod`/`moon.mod.json` or `moon.pkg`. Dependencies are declared inline in
+`moon.mod` or `moon.pkg`. Dependencies are declared inline in
 the script and resolved by the toolchain. Use it when replacing shell/Python
 automation with MoonBit scripts or when working with existing `.mbtx` files.
 
@@ -187,7 +192,22 @@ runtime or C FFI:
 moon run --target native script.mbtx -- arg1 arg2
 ```
 
-Arguments after `--` are passed to the script.
+Arguments after `--` are passed to the script. `moon check`, `moon test`,
+`moon fmt`, and `moon ide` all accept a `.mbtx` path; `moonx script.mbtx args`
+runs it as linear-memory Wasm.
+
+Experimental: a script run on Wasm may embed a Moonrun permission policy as a
+leading `// policy:` comment block (YAML after stripping `// `); relative
+paths resolve from the script directory, and an empty list denies that
+capability. The format may change — check `moonx --help` before relying on it.
+
+```moonbit
+// policy:
+//   env:
+//     from_host: [PATH]
+//   fs:
+//     read: [.]
+```
 
 ### Common script-specific checks
 

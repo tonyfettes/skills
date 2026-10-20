@@ -20,13 +20,14 @@ void register_callback(void (*callback)(void*), void *data);
 **MoonBit wrapper:**
 
 ```moonbit
+#borrow(closure)          // C calls it during this call only; `#owned` if C keeps it
 extern "c" fn register_callback_ffi(
   call_closure : FuncRef[(() -> Unit) -> Unit],
-  closure : () -> Unit
+  closure : () -> Unit,
 ) = "register_callback"
 
 pub fn register_callback(callback : () -> Unit) -> Unit {
-  register_callback_ffi(fn(f) { f() }, callback)
+  register_callback_ffi(f => f(), callback)
 }
 ```
 
@@ -44,15 +45,20 @@ pub fn register_callback(callback : () -> Unit) -> Unit {
 
 ```moonbit
 // C signature: void process_items(int (*callback)(void*, int), void *data);
+#borrow(closure)
 extern "c" fn process_items_ffi(
-  call_closure : FuncRef[(Int -> Int, Int) -> Int],
-  closure : Int -> Int
+  call_closure : FuncRef[((Int) -> Int, Int) -> Int],
+  closure : (Int) -> Int,
 ) = "process_items"
 
-pub fn process_items(callback : Int -> Int) -> Unit {
-  process_items_ffi(fn(f, x) { f(x) }, callback)
+pub fn process_items(callback : (Int) -> Int) -> Unit {
+  process_items_ffi((f, x) => f(x), callback)
 }
 ```
+
+(Function types always need parentheses around their parameters —
+`Int -> Int` is a parse error. Verified on moonc 0.10.16 with a C stub that
+invokes the callback.)
 
 ## Function pointer only
 

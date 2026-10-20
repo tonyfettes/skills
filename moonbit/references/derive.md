@@ -7,6 +7,45 @@ Configuring auto-derived traits. For the bare list of derivable traits, see `typ
 - A trait `T` can be derived only if every field used in the type already implements `T`.
 - Always derive `Debug` and `Eq` on data types; add `ToJson` if you `json_inspect` them in tests. Deriving `Show` for debugging is deprecated — reserve `Show` for genuine display formats via a manual `impl Show for T with output(...)`.
 - For `FromJson` / `ToJson` arguments more advanced than `style`, `rename_fields`, and per-field `rename`, **manually implement the trait** — many older args (`repr`, `case_repr`, `default`, `rename_all`) have been deprecated.
+- On a non-`priv` type every derive warns `implicit_impl_as_method` (0079) until you add `extend` lines — see below.
+
+## Derives and `extend` lines (warning 0079)
+
+Derived impls are `pub`, and the compiler still attaches their methods to the
+type as regular methods (`x.to_json()`, `T::default()`) — a deprecated implicit
+promotion that warns on moonc ≥ 0.10.14 (verified on 0.10.16, core does the
+same in its `extends.mbt` files). Say explicitly which methods stay:
+
+```mbt check
+///|
+pub(all) enum Level {
+  Low
+  High
+} derive(Debug, Eq, ToJson)
+
+///|
+pub extend Level with ToJson::{to_json} // keep `level.to_json()`
+
+///|
+#deprecated
+pub extend Level with Eq::{equal, not_equal} // acknowledge; `==` / `!=` still work
+
+///|
+#deprecated
+pub extend Level with @debug.Debug::{to_repr} // `debug_inspect` / `Repr(x)` still work
+```
+
+- Operators, `debug_inspect`, `json_inspect`, `Repr(x)` and `Trait::method(x)`
+  go through the trait and need no method; extend only what you call with dot
+  syntax. A non-`pub` `extend` does not silence the warning.
+- `priv` types never warn — internal-only types should be `priv` anyway
+  (`missing_priv`, 0004).
+- The warning text lists each trait's method set: `Eq::{equal, not_equal}`,
+  `Compare::{compare, op_lt, op_le, op_gt, op_ge}`, `Hash::{hash, hash_combine}`,
+  `Default::{default}`, `Show::{output, to_string}`, `FromJson::{from_json}`
+  (`@json.FromJson` outside the json package). Naming `@debug.Debug` in an
+  `extend` line needs `moonbitlang/core/debug` imported; `derive(Debug)` alone
+  does not.
 
 ## Derivable traits
 
@@ -16,12 +55,12 @@ Configuring auto-derived traits. For the bare list of derivable traits, see `typ
 | `Show` | `to_string()`, string interpolation `\{value}` — manual `impl` for display formats; deriving for debugging is deprecated |
 | `Eq` | `==`, `!=` |
 | `Compare` | `<`, `>`, `<=`, `>=` (orders enums by definition order) |
-| `Default` | `T::default()` |
+| `Default` | `Default::default()` (`T::default()` needs `pub extend T with Default::{default}`) |
 | `Hash` | `Map` / `HashSet` keys |
 | `Arbitrary` | property testing (`@quickcheck`); write as `derive(@quickcheck.Arbitrary)` |
 | `Shrink` | counterexample shrinking (`derive(@quickcheck.Shrink)`) — in-place field shrinking only, see `testing.md` "Property tests" |
-| `ToJson` | `json_inspect`, `to_json()` |
-| `FromJson` | `@json.from_json` |
+| `ToJson` | `json_inspect`, `@json.to_json(x)` (`x.to_json()` needs an `extend` line) |
+| `FromJson` | `@json.from_json` — the package must import `moonbitlang/core/json` even for the derive alone (else `core_package_not_imported`, 0071) |
 
 ### `Default` requirements
 

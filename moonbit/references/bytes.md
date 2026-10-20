@@ -39,7 +39,12 @@ test "bytes literals and indexing" {
 
 `MutArrayView[Byte]` comes from `data.mut_view(...)` and writes through to the
 underlying array; `Buffer()` (the prelude constructor — `@buffer.new()` is
-deprecated) accumulates writes and yields `Bytes`:
+deprecated) accumulates writes and yields `Bytes`. `Buffer()` alone needs no
+import; a `moonbitlang/core/buffer` import that only the prelude name uses
+warns `unused_package` (0029) — import it only to write `@buffer.Buffer`. Text
+goes in with an explicit encoding (`write_string_utf8`, `write_char_utf8`,
+`write_string_utf16le`): `Buffer::write_string`/`write_char` and its `Logger`
+impl are removed in core 0.10.16 — use `StringBuilder` for `Logger` APIs:
 
 ```mbt check
 ///|

@@ -9,30 +9,29 @@ Authoritative guide for writing, refactoring, testing, and binding MoonBit proje
 
 ## Toolchain version baseline
 
-This skill was written/validated against **MoonBit toolchain v0.10.4** (moonc
-v0.10.4, released 2026-07-13; skill last updated 2026-08-18). Spot-updates
-validated on moonc v0.10.7-nightly (2026-08-12): `guard!` semantics
-(`references/language.md`) and the `to_repr(x)` → `Repr(x)` deprecation.
-Labelled blocks (`references/control-flow.md`) validated on moonc v0.10.8
-(2026-08-18). Property-testing guidance (`@quickcheck`, derived `Shrink`) validated on
-moonc v0.10.14 (2026-09-28). Spot-updates validated on moonc v0.10.13 / async 0.21.2
-(2026-09-16): `pub extend` for `Show`/`Debug` impls, `clamped_view`
-truncation, one-shot `@http` requests (`references/errors.md`, `language.md`,
-`async.md`). Cancellation guidance validated on async 0.22.4 (2026-10-14):
-`catch` no longer captures cancellation (`references/async.md`).
+This skill was last revalidated against **MoonBit toolchain moonc v0.10.16 /
+moon 0.1.20261016** (2026-10-16), with `moonbitlang/async` 0.22.5; skill last
+updated 2026-10-20. Every checked code block in `references/` compiles and its
+tests pass on that toolchain. Changes since the earlier v0.10.4 baseline that
+most often bite: `moon.mod.json`/`moon.pkg.json` are rejected (migrate with
+`moon fmt`); `pkgtype(kind: "executable")` replaces `"is-main"`; functional
+`loop` is deprecated; partial matches are errors; `derive`/`pub impl` need
+`pub extend` lines; `moon fmt` rewrites `Int`/`UInt` to `Int32`/`UInt32`;
+async cancellation is not catchable (`references/async.md`).
 
-**Assume the toolchain is v0.10.4** and follow this skill's guidance as-is —
+**Assume the toolchain is v0.10.16** and follow this skill's guidance as-is —
 do not preemptively run `moon version` or second-guess the references. Deviate
 only when you observe evidence of a different version: unrecognized syntax in
 existing code, a compiler error/warning contradicting this skill, or a flag or
 feature behaving differently than documented here. In that case:
 
 1. Run `moon version --all` to get the actual installed version.
-2. If it differs from v0.10.4, check the official release notes at
+2. If it differs from v0.10.16, check the official release notes at
    <https://www.moonbitlang.com/updates/> (fetch the page; each entry links a
-   per-release changelog) for what changed between v0.10.4 and the installed
-   version, and prefer the newer toolchain's behavior over this skill where
-   they conflict.
+   per-release changelog) and `${MOON_HOME}/lib/core/CHANGELOG.md` for what
+   changed, and prefer the installed toolchain's behavior over this skill where
+   they conflict. On an **older** toolchain (e.g. `moon fmt` rejects
+   `pkgtype(...)`), fall back to the spellings the compiler accepts.
 3. Note the discrepancy to the user so the skill can be updated.
 
 ## Route to references by task
@@ -47,7 +46,7 @@ Load the reference matching your current work BEFORE writing code:
 | Arrays, `Map`, view types, spread `..x`, `Iter`/`iter()` protocol | `references/collections.md` |
 | `Bytes`, byte containers (`Buffer()`), `BytesView`, bitstring patterns (binary parsing) | `references/bytes.md` |
 | Error handling (`suberror`, `raise`/`catch`/`noraise`, `raise?`, `try`; variant suberrors with `Show` text, expected-failure tests, parse-or-mismatch in `noraise`) | `references/errors.md` |
-| Loops and control flow (`for`, functional `loop`, `while`/`nobreak`, labelled loops/blocks, pipe operators, loop invariants, `defer`) | `references/control-flow.md` |
+| Loops and control flow (`for`, `for` state loops replacing the deprecated functional `loop`, `while`/`nobreak`, labelled loops/blocks, pipe operators, loop invariants, `defer`) | `references/control-flow.md` |
 | Methods, traits, trait objects (`&Trait`), trait/impl visibility, dot-resolution rules, operator overloading, indexing operators (`#alias`) | `references/traits-methods.md` |
 | Configuring `derive(...)` — JSON enum styles, rename rules, container/case/field args | `references/derive.md` |
 | Running `moon` commands (check / build / test / fmt / info / run) | `references/toolchain.md` |
@@ -61,15 +60,15 @@ Load the reference matching your current work BEFORE writing code:
 | Optimizing hot-path code on the native backend (refcount traffic, polymorphic `Eq` on enums, cross-package inlining, reading generated C/asm, `moon tool demangle` for `_M0...` symbols) | `references/optimization.md` |
 | SIMD with the experimental `V128` type (`@v128` lane ops, wasm SIMD128 mirror) | `references/optimization.md` |
 | Async IO (`moonbitlang/async` setup, `with_task_group`, async tests, cancellation-safe cleanup, backpressure, timeouts, one-shot `@http` requests) | `references/async.md` |
-| Writing tests (snapshot `inspect` family, black-box defaults, docstring tests, `@test.T::snapshot`, error assertions, `@quickcheck` property tests / custom `Arbitrary` / `Shrink`) | `references/testing.md` |
+| Writing tests (snapshot `inspect` family, black-box defaults, docstring tests, `@test.Test::snapshot`, error assertions, `@quickcheck` property tests / custom `Arbitrary` / `Shrink`) | `references/testing.md` |
 | Measuring performance (`@bench.T` benchmarks, native `--profile`, before/after methodology) | `references/optimization.md` |
 | Code navigation with `moon ide` (outline/peek-def/find-references/rename/hover/doc/workspace-symbols), API-shrinkage planning with `moon ide analyze` (dependent usage counts; mixed-target + path-filter gotchas) | `references/moon-ide.md` |
 | Binding a C library (`extern "c"`, stubs, ownership, callbacks, ASan, disabling bundled mimalloc) | `references/ffi/c.md` (+ topic files in `references/ffi/`) |
 | JS / Wasm / Wasm-GC FFI (`extern "js"`, `#module`, host imports, exports, `moonbit:ffi` callbacks) | `references/ffi/js-wasm.md` |
 | Writing standalone `.mbtx` scripts (script skeleton, inline imports, run commands; package APIs go through the API Lookup Rule) | `references/toolchain.md` |
-| Conditional compilation, link configuration, pre-build commands, warning control | `references/project-config.md` |
+| Conditional compilation, link configuration (`options(link: ...)`), package kind (`pkgtype`), virtual packages, pre-build commands, warning control | `references/project-config.md` |
 | Code coverage (`moon test --enable-coverage`, `moon coverage analyze/report/clean`, report formats, CI upload, `#coverage.skip`) | `references/testing.md` |
-| Publishing to mooncakes.io (`moon register/login/publish`, semver/MVS, `include`/`exclude` filtering, `moon tree/install/upgrade`) | `references/publishing.md` |
+| Publishing to mooncakes.io (`moon register/login/publish/deprecate`, semver/MVS, `.moonignore` filtering, `moon tree/search/view/install/upgrade`) | `references/publishing.md` |
 | Wasm Component Model (WIT, `wit-bindgen moonbit`, `wasm-tools component embed/new/wit`, wasmtime) | `references/ffi/wasm-component.md` |
 
 ## Top recurring mistakes — check before every edit
@@ -86,7 +85,10 @@ Mined from real session history; these caused the most compiler pushback by far:
 8. **"does not implement trait Show/Eq" means a missing derive** — `==` / `!=` needs `derive(Eq)`; interpolation `\{x}` needs `Show` (or use `\{Repr(x)}` for debug-only display; `to_repr(x)` is its deprecated old name). Check derives before writing comparisons on new enums/structs; this is the single most common type error in real sessions.
 9. **In a workspace mixing js/native modules, bare `moon check/test/build/info` defaults to wasm-gc and fails** — always pass `--target js|native` (run both for shared packages). And never run `moon info --target X` to refresh `.mbti` in a multi-target package: it rewrites `pkg.generated.mbti` to that target's specialized surface — regenerate with default-target `moon info` and revert such diffs.
 10. **Native `String` and `Bytes` are NUL-terminated by the runtime.** `String` has a trailing UTF-16 zero code unit and `Bytes` has a trailing zero byte; `length()` excludes that sentinel. At C FFI boundaries, pass UTF-8 strings as `@utf8.encode(s)` for `const char *` — do not hand-roll conversion loops or append an extra `\0` unless the NUL is part of the logical payload. Read `references/ffi/c.md` before editing `extern "c"` bindings, C stubs, or `char *` call sites.
-11. **A manual `impl Show for T` or `derive(Debug)` needs a matching `pub extend T with Show::{to_string, output}` / `pub extend T with @debug.Debug::{to_repr}` line** on moonc ≥ 0.10.13, or the compiler warns `implicit_impl_as_method` (0079). Write the `extend` line with the impl (`references/errors.md`).
+11. **Every `derive(...)` or `pub impl` on a non-`priv` type needs `extend` lines** on moonc ≥ 0.10.14, or the compiler warns `implicit_impl_as_method` (0079) — e.g. `pub extend T with Eq::{equal, not_equal}`, `pub extend T with @debug.Debug::{to_repr}`, `pub extend T with Show::{to_string, output}`. The warning text names the exact line. `#deprecated pub extend ...` retires the promoted dot-method instead (operators and `debug_inspect` keep working). Internal-only types should be `priv` (no warning). See `references/derive.md`.
+12. **`Int32` / `UInt32` are the canonical spellings now.** `Int` / `UInt` still compile without a warning, but `moon fmt` rewrites them and `.mbti` files print `Int32` / `UInt32`. Write `Int32`/`UInt32` in new code; on a repo's first `moon fmt` with this toolchain, expect (and commit separately) a large mechanical rename diff. Snippets in this skill still say `Int` — treat them as the same type.
+13. **Empty collections need explicit constructors**: `Map([])` / `Set([])`, not `{}` — bare `{}` warns `ambiguous_braces` (0082) even with a type annotation. `inspect(...)` on `Option`/`Result`/`Array`/tuples/`Map` warns deprecated ("Use Debug instead of Show") — use `debug_inspect`. `@test.T` no longer resolves — it is `@test.Test` (import `moonbitlang/core/test`).
+14. **Black-box tests and doc tests qualify the package's own API** — `@pkg.f(...)`, not `f(...)` (`test_unqualified_package`, 0025). And every `moonbitlang/core/*` package you name needs an explicit `moon.pkg` import (`core_package_not_imported`, 0071), while an unused one warns `unused_package` (0029).
 
 ## API Lookup Rule
 
@@ -111,7 +113,7 @@ README/source/tests when behavior, target support, examples, or edge cases
 matter.
 
 For registry packages, including `moonbitlang/async`, first read the project
-`moon.mod` (or legacy `moon.mod.json`) to find the pinned dependency version.
+`moon.mod` to find the pinned dependency version.
 Then fetch that exact version's source as plain, greppable files:
 
 ```sh
@@ -143,7 +145,7 @@ Pay special attention to:
 
 1. **Clarify goal and constraints.** Confirm expected behavior, non-goals, and compatibility constraints (target backend, public API stability, performance limits). Decide early whether the task should change public API at all.
 
-2. **Locate module/package boundaries.** Find `moon.mod` (module root; legacy projects may still use `moon.mod.json`) and relevant `moon.pkg` / `moon.pkg.json` files (package boundaries and imports).
+2. **Locate module/package boundaries.** Find `moon.mod` (module root) and relevant `moon.pkg` files (package boundaries and imports). Legacy `moon.mod.json` / `moon.pkg.json` are rejected by current moon — run `moon fmt` once to migrate them (see `references/project-config.md`).
 
 3. **Discover APIs before coding.** Prefer `moon ide doc` queries to find existing functions/types/methods before adding new code. Use `moon ide outline`, `moon ide peek-def`, and `moon ide find-references` for semantic navigation. See `references/moon-ide.md`.
 
@@ -206,7 +208,7 @@ For migration shims (`#as_free_fn`, `#alias(old, deprecated)`), package splits v
 
 ## Project Layouts
 
-MoonBit uses `.mbt` for source files and `.mbti` for interface files. At the top of a project there is a `moon.mod` file with module metadata. The project may contain multiple packages, each with `moon.pkg` (preferred) or `moon.pkg.json` (legacy). Subdirectories can also contain `moon.mod` to scope a different dependency set. Legacy projects may still contain `moon.mod.json`; treat it as the old module metadata format and migrate/update guidance to `moon.mod` instead of creating new `moon.mod.json` files. Repos with **multiple modules** add a `moon.work` workspace manifest at the root listing member modules — see `references/project-config.md` (`moon work init/use/sync`).
+MoonBit uses `.mbt` for source files and `.mbti` for interface files. At the top of a project there is a `moon.mod` file with module metadata. The project may contain multiple packages, each with a `moon.pkg`. Subdirectories can also contain `moon.mod` to scope a different dependency set. Legacy `moon.mod.json` / `moon.pkg.json` files are rejected by ordinary commands since moon 0.1.20261016; `moon fmt` migrates them — never create new JSON manifests. Repos with **multiple modules** add a `moon.work` workspace manifest at the root listing member modules — see `references/project-config.md` (`moon work init/use/sync`).
 
 ### Example layout
 
@@ -219,7 +221,7 @@ my_module
 ├── cmd/
 │   └── main/
 │       ├── main.mbt
-│       └── moon.pkg          # executable package with `options("is-main": true)`
+│       └── moon.pkg          # executable package: `pkgtype(kind: "executable")`
 ├── liba/                     # Library package
 │   ├── moon.pkg              # Referenced as `@username/my_module/liba`
 │   └── libb/                 # Nested package
@@ -230,7 +232,7 @@ my_module
 ```
 
 - **Module**: characterized by `moon.mod`. Like a Go module — a collection of packages, usually one per repo. Module boundaries matter for dependency management and import paths.
-- **Package**: characterized by `moon.pkg` (or `moon.pkg.json`). The compilation unit (like a Go package). All source files in a package share definitions. Package name = module name + relative path to package dir (NOT file names). Imports refer to module + package paths, NEVER to file names. All `moon` subcommands execute in the module root, not the current package.
+- **Package**: characterized by `moon.pkg`. The compilation unit (like a Go package). All source files in a package share definitions. Package name = module name + relative path to package dir (NOT file names). Imports refer to module + package paths, NEVER to file names. All `moon` subcommands execute in the module root, not the current package.
 - **Files**: `.mbt` files are just chunks of source inside a package. File names do NOT create modules/packages/namespaces. You may freely split/merge/move declarations between files in the same package — any declaration can reference any other in the same package.
 
 ### Coding/layout rules you MUST follow
@@ -245,7 +247,7 @@ my_module
 
 5. **Tests**: Place in dedicated `*_test.mbt` files in the appropriate package. `*.mbt.md` files are also black-box test files — code blocks tagged ` ```mbt check ` are treated as test cases and serve both as docs and tests. `README.mbt.md` with `mbt check` examples is encouraged; symlink to `README.md` for GitHub compatibility.
 
-6. **Interface files (`pkg.generated.mbti`)**: compiler-generated summaries of a package's public API. Useful for code review. Check them into version control — commits that don't change public APIs leave these files unchanged. Generated by `moon info`; never edit them by hand (not even whitespace cleanup) — regenerate and review the diff as the public-API signal.
+6. **Interface files (`pkg.generated.mbti`)**: compiler-generated summaries of a package's public API. Useful for code review. Check them into version control — commits that don't change public APIs leave these files unchanged. Generated by `moon info` (and refreshed by every successful `moon check`); never edit them by hand (not even whitespace cleanup) — regenerate and review the diff as the public-API signal.
 
 7. **Public API minimization**: treat every `.mbti` entry as an API promise.
    - Public mutable fields are almost always wrong.
@@ -278,13 +280,17 @@ my_module
 - **Don't write an empty parameter list for `main`** — use `fn main { ... }` or `fn main raise { ... }`, not `fn main() { ... }`
 - **Don't write record-style enum/error constructor fields** — labeled constructor fields use `label~ : Type`, e.g. `InvalidNumber(input~ : String)`, not `InvalidNumber(input : String)`
 - **Don't manually forward optional arguments by branching on `Some`/`None`** — if both caller and callee use `arg? : T`, pass it through as `arg?`; do not write two calls like `if arg is Some(arg) { f(arg~) } else { f() }`.
+- **Functional `loop` is deprecated** (`deprecated_syntax`) — write `for a = x, b = y { match ... { ... => continue a2, b2; ... => break v } }` (see `references/control-flow.md`). Local `struct`/`enum` inside a function is a parse error.
+- **Partial `match` is an error** (`partial_match`, 0011, error by default) — cover every case. Matching a `#non_exhaustive` enum from another package needs a final `E::..` arm, not `_`.
+- **Type-parameter method calls**: with several bounds or a super-trait method, write `Trait::m(x)`, not `x.m()` / `T::m()` (warning 0083).
+- **Slicing clamps**: `s[a:b]` never aborts — out-of-range bounds clamp and split surrogate pairs move inward; use `exact_view` when out-of-range must fail.
 - **Prefer range `for` loops** over C-style — `for i in 0..<(n-1) {...}` and `for j in 0..=6 {...}` are more idiomatic
 - **Don't use `for { ... }` for infinite loops** — write `for ;; { ... }` instead
 - **Don't `derive(Show)` for debugging** — derive `Debug` and use `debug_inspect()` for test/diagnostic output (`\{Repr(value)}` for interpolation of composed values; the free function `to_repr(x)` is deprecated in favor of `Repr(x)`). Reserve a manual `impl Show` for specialized display formats (JSON, XML, domain text)
 - **Don't call `@json.inspect()`** — use the prelude `json_inspect(value, ...)` without a package prefix
 - **Async** — MoonBit has no `await` keyword; do not add it. Async functions/tests are marked with the `async` prefix (e.g. `[pub] async fn ...`, `async test ...`). Async functions default to raising, so do not add `raise`; add `noraise` only when the async body must not raise.
 - **No `finally`** in MoonBit — use `defer expr` / `defer { ... }` for scope-exit cleanup (runs on normal exit and when an error propagates); see `references/control-flow.md`
-- **Cancellation-critical async cleanup** — in `moonbitlang/async` (≥ 0.22.0), `defer`/`errdefer` run on cancellation but `catch` does not; any async operation inside the cleanup is itself cancelled immediately; must-complete cleanup needs `@async.protect_from_cancel`, with important refinements — read `references/async.md` before writing one.
+- **Cancellation-critical async cleanup** — in `moonbitlang/async` (≥ 0.22.0), `defer`/`errdefer` run on cancellation but `catch` does not; any async operation inside the cleanup is itself cancelled immediately; must-complete cleanup needs `@async.protect_from_cancel`, with important refinements — read `references/async.md` before writing one. `TaskGroup::add_defer` takes a `nocancel` callback; a `nocancel` function cannot call cancellable async code (error 4227) — wrap it in `protect_from_cancel`. `with_cancellation_handler` is deprecated → `handle_cancellation`.
 - **Async pipeline backpressure** — use **bounded** queues between reader/writer tasks (an `Unbounded` inbound queue can OOM the process); shutdown/queue-draining rules in `references/async.md`.
 - **No cross-package extension methods** — you cannot define `@otherpkg.Type::method` from outside that type's own package. Use free functions or define a trait and `impl Trait for @otherpkg.Type` instead.
 - **Do NOT use context7** for MoonBit library lookups — MoonBit packages aren't indexed there. Use `moon ide doc`, mooncakes.io, the moon registry cache (`${MOON_HOME:-$HOME/.moon}/registry/cache/`), `.mbti` files, or the library's source/GitHub instead.
@@ -292,9 +298,9 @@ my_module
 - **Legacy declaration syntax to avoid**: `typealias B as A` (use `type Alias = T` or `#alias(...)`); `suberror E T` payload shorthand (use `suberror E { E(T) }`); un-annotated async/raising lambdas — effect inference is deprecated, mark lambdas `async`/`raise` explicitly.
 - **Postfix `catch` can't be a bare scrutinee** — `match f() catch { ... } { ... }` is a parse error; wrap in parentheses or bind with `let` first.
 - **Don't use deprecated `Json` accessors** (`.value(key)`, `.as_string()`, ...) — pattern-match instead: `if json is Object(obj) { obj.get(key) }`, `if json is String(s) { ... }`.
-- **`#valtype` has hard limits** (currently ≤6 fields, no `mut` fields, no abstract-type fields, no nested value types — limits may be relaxed in future compiler releases) — check `references/valtype.md` before annotating.
+- **`#valtype` limits**: no `mut` fields and no recursive value types (error 4173); nested value types, >6 fields and reference payloads are allowed on current compilers — see `references/valtype.md`.
 - **Sorting strings is NOT dictionary order** — `String::compare` (so `<`, `sort()`, string-keyed ordering) compares **length first**, then content: `"b" < "aa"` is `true`, and `["b", "aa", "a"].sort()` gives `["a", "b", "aa"]`. Silent wrong results, never a compile error. Details and the dictionary-order workaround in `references/strings-regex.md`; if a test only means "these are the elements", assert membership + length instead of sorting.
-- **Search core before hand-rolling utilities** — case-insensitive compare is `equal_ignore_ascii_case`, substring scan is `String::contains_any`, clamping is `Int::clamp`, String↔Bytes is `moonbitlang/core/encoding/utf8`, CLI parsing is `@argparse` (stdlib — see `references/cli.md`; never hand-roll an argv loop). If it feels like a common utility, look it up first (see API Lookup Rule).
+- **Search core before hand-rolling utilities** — case-insensitive compare is `equal_ignore_ascii_case`, substring scan is `String::contains_any`, clamping is `Int::clamp`, String↔Bytes is `moonbitlang/core/encoding/utf8`, URI percent-encoding is `moonbitlang/core/encoding/percent`, CLI parsing is `@argparse` (stdlib — see `references/cli.md`; never hand-roll an argv loop). If it feels like a common utility, look it up first (see API Lookup Rule).
 - **Don't assert performance conclusions without measuring** — no "this is faster/slower" claims without a benchmark or profile run; propose the measurement first (see `references/optimization.md`).
 
 For complete syntax details, see `references/language.md` (and its topic files `types.md`, `strings-regex.md`, `collections.md`, `bytes.md`, `errors.md`, `control-flow.md`, `traits-methods.md`). For `moon` tooling, see `references/toolchain.md` (commands), `references/project-config.md` (module/package config), and `references/moon-ide.md`.

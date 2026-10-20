@@ -109,6 +109,24 @@ call sites that will break, so `moon check` output is the migration worklist.
 Omitting `msg` on the `alias` form makes the old label a silent, permanent
 alias — include `msg` when you intend to remove it.
 
+### Trait methods on the type: `extend`
+
+A `pub impl Trait for T` (and every `derive`) used to attach its methods to
+`T` implicitly, so `x.m()` worked; that promotion is deprecated and warns
+`implicit_impl_as_method` (0079, on by default since moonc 0.10.14). Decide per
+method whether it is API:
+
+```mbt nocheck
+pub extend Reverse with Eq::{equal}          // keep `x.equal(y)` as a method
+
+#deprecated("Use `!=` instead", skip_current_package=true)
+#doc(hidden)
+pub extend Reverse with Eq::{not_equal}      // keep compiling, warn callers
+```
+
+This is core's own pattern (`extends.mbt` files). Dropping a promoted method
+without the `#deprecated` step breaks downstream `x.m()` calls.
+
 ### Announcing visibility tightening: `#visibility`
 
 When a `pub(all)` type is headed for `readonly` or `abstract`, warn users

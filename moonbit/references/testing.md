@@ -1,7 +1,7 @@
 # MoonBit Testing Guide
 
 Correctness testing: snapshot tests with the `inspect` family, black-box
-defaults, docstring tests, full-output snapshots (`@test.T::snapshot`), error
+defaults, docstring tests, full-output snapshots (`@test.Test::snapshot`), error
 handling in tests, and the code-coverage workflow. Related files: `moon test`
 command flags are in `toolchain.md`; performance measurement (`@bench.T`,
 profiling) is in `optimization.md`.
@@ -11,12 +11,12 @@ profiling) is in `optimization.md`.
 Snapshot tests are preferred — easy to update when behavior changes.
 
 - **Snapshot tests**: write `inspect(value)` / `debug_inspect(value)` / `json_inspect(value)`, then run `moon test --update` (or `-u`) to fill in `content=`.
-  - `inspect()` for values that implement `Show` (primitives, or types with a manual `impl Show`)
+  - `inspect()` for values that implement `Show` (primitives, `String`, or types with a manual `impl Show`). Containers — `Option`, `Result`, `Array`, tuples, `Map` — warn `deprecated` ("Use Debug instead of Show for debugging purposes", moonc 0.10.16): `debug_inspect` them
   - `debug_inspect()` for any type that derives `Debug` — the default for your own data types
-  - `json_inspect()` for complex nested structures (uses `ToJson`, more readable output; `@json.inspect` is its deprecated old name — call it without a package prefix)
+  - `json_inspect()` for complex nested structures (uses `ToJson`, more readable output; the old `@json.inspect` alias is removed in core 0.10.16 — call it without a package prefix)
   - Encouraged to inspect the **whole return value** when it's not huge — makes tests simple. Derive `Debug` and/or `ToJson` (or `impl Show`) on `YourType` accordingly.
 - **Update workflow**: after changing code that affects output, run `moon test --update`, review diffs in test files.
-- **Black-box by default**: call only public APIs via `@package.fn`. Use white-box tests (`*_wbtest.mbt`) only when private members matter.
+- **Black-box by default**: call only public APIs via `@package.fn`. Use white-box tests (`*_wbtest.mbt`) only when private members matter. Unqualified calls to the package's own API in a black-box test (`_test.mbt`, doc tests, `.mbt.md`) warn `test_unqualified_package` (0025, on by default) — write `@pkg.sum_array(...)`, not `sum_array(...)`.
 - **Grouping**: Combine related checks in one `test "..." { ... }` block for speed and clarity.
 - **Panics**: Name tests with prefix `test "panic ..." {...}`. If the call returns a value, wrap it with `ignore(...)` to silence warnings.
 - **Comparing two computed values** is `@debug.assert_eq` — `inspect(x, content=...)` / `debug_inspect` are for literal expected content; never interpolate the expected value into `content="\{y}"`.
@@ -43,17 +43,14 @@ Public APIs are encouraged to have docstring tests:
 
 ````mbt check
 ///|
-/// Get the largest element of a non-empty `Array`.
+/// Sum the elements of an `Array`.
 ///
 /// # Example
 /// ```mbt check
 /// test {
-///   inspect(sum_array([1, 2, 3, 4, 5, 6]), content="21")
+///   inspect(@stats.sum_array([1, 2, 3, 4, 5, 6]), content="21")
 /// }
 /// ```
-///
-/// # Panics
-/// Panics if `xs` is empty.
 pub fn sum_array(xs : Array[Int]) -> Int {
   xs.fold(init=0, (a, b) => a + b)
 }
@@ -62,9 +59,11 @@ pub fn sum_array(xs : Array[Int]) -> Int {
 MoonBit code in docstrings is type-checked and tested automatically (via `moon test --update`). In docstrings, `mbt check` blocks should only contain `test` or `async test`.
 
 **Doc tests are always blackbox.** They compile as black-box tests of the
-package, so a doc test can only call the public API — a doc test on a *private*
-definition cannot reference that definition (unbound identifier). Don't attach
-example tests to private items; test them via `*_wbtest.mbt` instead.
+package, so a doc test can only call the public API — qualified with the
+package alias (`@stats.` above, for a package named `stats`) — and a doc test
+on a *private* definition cannot reference that definition (unbound
+identifier). Don't attach example tests to private items; test them via
+`*_wbtest.mbt` instead.
 
 ## `.mbt.md` literate files
 
@@ -87,7 +86,7 @@ The code-fence language id controls handling — there are four:
 | `mbt nocheck` | displayed MoonBit, not compiled or tested |
 | `moonbit` | ordinary display block, not compiled or tested |
 
-Gotchas (verified with moon 0.1.20260629):
+Gotchas (verified with moon 0.1.20260629; re-verified on 0.1.20261016):
 
 - All `mbt check` blocks in one file share a scope — a `fn` in one block is
   visible to a `test` in a later block.
@@ -116,19 +115,19 @@ entries take the form `username/module@version/package`). Use `moonbit.deps`
 synthesize imports — but note `deps` without `import` imports *all* packages
 of the module (legacy behavior, warns); prefer explicit `import`.
 
-## Full-output snapshots with `@test.T::snapshot`
+## Full-output snapshots with `@test.Test::snapshot`
 
-For tests where you want to capture the **entire output** of a process (codegen, formatter, renderer, parser pretty-printer), use `@test.T`:
+For tests where you want to capture the **entire output** of a process (codegen, formatter, renderer, parser pretty-printer), use `@test.Test` (the old name `@test.T` no longer resolves — error 4032 on moonc 0.10.16):
 
 ```mbt nocheck
-test "record anything" (t : @test.T) {
+test "record anything" (t : @test.Test) {
   t.write("Hello, world!")
   t.writeln(" And hello, MoonBit!")
   t.snapshot(filename="record_anything.txt")
 }
 ```
 
-`moon test --update` writes (and refreshes) the snapshot under `__snapshot__/<filename>` in the package. On subsequent runs, the test compares actual output to the saved file and fails on diff.
+Import `moonbitlang/core/test` (`for "test"`) or it warns `core_package_not_imported` (0071). `moon test --update` writes (and refreshes) the snapshot under `__snapshot__/<filename>` in the package. On subsequent runs, the test compares actual output to the saved file and fails on diff.
 
 ### When to use this over `inspect`
 
@@ -137,7 +136,7 @@ test "record anything" (t : @test.T) {
 | `inspect(value, content=...)` | The value implements `Show` (primitives or a manual `impl Show`) |
 | `debug_inspect(value, content=...)` | Your own data types — anything that derives `Debug` |
 | `json_inspect(value, content=...)` | Nested structures; `ToJson` produces clearer diff |
-| `@test.T::snapshot(filename=...)` | Output is multi-line/binary-ish; or you want to record a whole pipeline run, not a single value |
+| `@test.Test::snapshot(filename=...)` | Output is multi-line/binary-ish; or you want to record a whole pipeline run, not a single value |
 
 ### Constraints
 
@@ -184,7 +183,7 @@ impl @quickcheck.Arbitrary for Small with fn arbitrary(size, state) {
 
 ///|
 impl @quickcheck.Shrink for Small with fn shrink(self) {
-  shrink_tree(self.0).map(Small(_)).iter()
+  shrink_tree(self.0).map(t => Small(t)).iter()   // `Small(_)` partial application is deprecated
 }
 ```
 
@@ -275,7 +274,7 @@ let r = atlas.reserve(w, h) catch {
 
 ## Update workflow
 
-`moon test --update` (or `-u`) writes/refreshes snapshots for both `inspect` content and `@test.T::snapshot` files. Review the resulting diff in test files / `__snapshot__/` before committing.
+`moon test --update` (or `-u`) writes/refreshes snapshots for both `inspect` content and `@test.Test::snapshot` files. Review the resulting diff in test files / `__snapshot__/` before committing.
 
 ## Code coverage
 

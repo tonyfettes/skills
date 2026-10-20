@@ -21,8 +21,8 @@ fn Rectangle::area(self : Rectangle) -> Double {
 
 ///|
 /// Static methods don't take self
-fn Rectangle::new(w : Double, h : Double) -> Rectangle {
-  { width: w, height: h }
+fn Rectangle::square(side : Double) -> Rectangle {
+  { width: side, height: side }
 }
 
 ///|
@@ -32,19 +32,30 @@ pub impl Show for Rectangle with output(self, logger) {
 }
 
 ///|
-trait Named {
+/// A `pub impl` needs `pub extend` to keep its methods dot-callable (0079)
+pub extend Rectangle with Show::{to_string, output}
+
+///|
+priv trait Named {
   name() -> String                            // no `self` parameter — not object-safe
 }
 
 ///|
-/// Trait bounds in generics
-fn[T : Show + Named] describe(value : T) -> String {
-  "\{T::name()}: \{value.to_string()}"
+/// Trait bounds in generics; a Self-less method is called as `T::name()`
+fn[T : Named] label(_value : T) -> String {   // T must appear in the signature
+  T::name()
+}
+
+///|
+/// With several bounds, qualify calls as `Trait::method(value)` — dot calls
+/// and `T::m()` warn `type_param_method` (0083) there
+fn[T : Show + Hash] describe(value : T) -> String {
+  "\{Show::to_string(value)} #\{Hash::hash(value)}"
 }
 
 ///|
 impl Hash for Rectangle with hash_combine(self, hasher) {
-  hasher..combine(self.width)..combine(self.height)
+  hasher..combine(self.width).combine(self.height)   // `..` only on non-final calls
 }
 ```
 
@@ -54,12 +65,12 @@ impl Hash for Rectangle with hash_combine(self, hasher) {
 
 ```mbt check
 ///|
-struct A1 {
+priv struct A1 {
   x : Int
 }
 
 ///|
-struct A2 {
+priv struct A2 {
   y : Int
 }
 
@@ -87,17 +98,18 @@ test "overloading and direct trait calls" {
 When you write `x.m(...)`:
 
 1. A **regular method** (`fn T::m`) always wins over a trait `impl` with the same name.
-2. A trait `impl` is dot-callable **only if it lives in the package of the self type** — from other packages, call `Trait::m(x)` or go through a generic with a trait bound.
+2. A trait `impl` is dot-callable **only if it lives in the package of the self type** — from other packages, call `Trait::m(x)` or go through a generic with a trait bound. For a `pub impl` (and every `derive`), that dot access is a deprecated implicit promotion (warning 0079): declare `pub extend T with Trait::{m}` to keep `x.m()`, or `#deprecated pub extend ...` to retire it (see `derive.md`).
 3. If multiple traits provide same-named dot-callable methods, it's an **ambiguity error** — qualify with `Trait::m(x)`.
+4. On a **type parameter**, dot calls are only for a single, directly written bound: with several bounds, or a method from a super-trait, write `Trait::m(x)` (warning 0083).
 
 ```mbt check
 ///|
-trait Speaks {
+priv trait Speaks {
   say(Self) -> String
 }
 
 ///|
-struct Robot {}
+priv struct Robot {}
 
 ///|
 impl Speaks for Robot with say(_) {
@@ -176,7 +188,7 @@ impl Measurable with is_empty(self) {
 }
 
 ///|
-struct Payload {}
+priv struct Payload {}
 
 ///|
 impl Measurable for Payload with size(_) {
@@ -196,8 +208,8 @@ pub(open) trait Draw     { draw(Self, Int, Int) -> Unit }
 pub(open) trait Object: Position + Draw {}      // Object requires both
 
 pub fn[O : Object] render(obj : O) -> Unit {
-  let (x, y) = obj.pos()
-  obj.draw(x, y)
+  let (x, y) = Position::pos(obj)               // `obj.pos()` warns 0083: super-trait method
+  Draw::draw(obj, x, y)
 }
 ```
 
@@ -239,10 +251,10 @@ pub(open) trait Animal {
 }
 
 ///|
-struct Duck(String)
+priv struct Duck(String)
 
 ///|
-struct Fox(String)
+priv struct Fox(String)
 
 ///|
 impl Animal for Duck with speak(self) {
@@ -295,20 +307,20 @@ If your method name shadows one from the type's home package, the compiler emits
 
 ```mbt check
 ///|
-struct Vector(Int, Int)
+priv struct Vector(Int, Int)
 
 ///|
-pub impl Add for Vector with add(self, other) {
+impl Add for Vector with add(self, other) {   // a `pub impl` would also need `pub extend` (0079)
   Vector(self.0 + other.0, self.1 + other.1)
 }
 
 ///|
-struct Person {
+priv struct Person {
   age : Int
 } derive(Eq)
 
 ///|
-pub impl Compare for Person with compare(self, other) {
+impl Compare for Person with compare(self, other) {
   self.age.compare(other.age)
 }
 
@@ -347,12 +359,12 @@ struct Coord {
 
 #alias("_[_]")
 fn Coord::get(self : Self, key : String) -> Int {
-  match key { "x" => self.x; "y" => self.y }
+  match key { "x" => self.x; _ => self.y }   // a partial match is an error, not a warning
 }
 
 #alias("_[_]=_")
 fn Coord::set(self : Self, key : String, val : Int) -> Unit {
-  match key { "x" => self.x = val; "y" => self.y = val }
+  match key { "x" => self.x = val; _ => self.y = val }
 }
 
 // let c = Coord::{ x: 1, y: 2 }

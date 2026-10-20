@@ -60,7 +60,7 @@ comments and design discussions, not just committed optimizations).
 
 ### Benchmarking with `@bench.T`
 
-A test block whose argument is `@bench.T` is run by `moon test` as a benchmark — `moon` reports timing statistics.
+A test block whose argument is `@bench.T` (alias of `@bench.Bench`) is a benchmark: `moon bench` runs it and reports timing statistics; `moon test` skips it (verified on moon 0.1.20261016). The package must import `moonbitlang/core/bench`.
 
 ```mbt nocheck
 fn fib(n : Int) -> Int {
@@ -119,7 +119,7 @@ fn collect_bench() -> Unit {
     saved = fib(20)
   })
   println(saved)                                       // touch saved so it's not dropped
-  println(summary.to_json().stringify(escape_slash=true, indent=4))
+  println(@json.to_json(summary).stringify(escape_slash=true, indent=4))  // `summary.to_json()` is deprecated
 }
 ```
 
@@ -252,7 +252,7 @@ Before restructuring a callee, try the attribute:
 fn add_one(x : Int) -> Int { x + 1 }
 
 #inline(never)    // hint: keep the call (cold paths, profiling anchors)
-fn slow_path_rescan(self : Grid) -> Unit { ... }
+fn Grid::slow_path_rescan(self : Grid) -> Unit { ... }
 ```
 
 Both are *hints* — they don't change source-level behavior, and the compiler

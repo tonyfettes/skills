@@ -36,6 +36,11 @@ Success message: `API token saved to ~/.moon/credentials.json`.
    ```
 
 5. Run the usual pre-commit pass: `moon fmt`, `moon info`, `moon test`.
+6. **Not `private = true`** in `moon.mod` — `moon publish` (even `--dry-run`)
+   refuses private modules.
+
+`moon package` / `moon publish` run `moon check`, so the package zip includes
+each package's freshly generated `pkg.generated.mbti`.
 
 Then:
 
@@ -55,20 +60,22 @@ the *minimum* version satisfying all declared requirements, so consumers get a
 dependency graph as close as possible to what authors developed against —
 provided everyone follows semver honestly.
 
-## Publish filtering: `include` / `exclude`
+## Publish filtering: `.moonignore` / `.gitignore`
 
-Control which files go into the published package. Gitignore syntax;
-**`include` is applied after `exclude`** (include wins for re-adding subsets):
+Control which files go into the published package with `.gitignore` or a
+`.moonignore` (same syntax; `.moonignore` overrides `.gitignore` in the same
+directory). To keep a subset of an ignored directory, ignore its contents and
+re-include the subset — a directory pattern like `build/` cannot be undone:
 
 ```
-options(
-  exclude: ["build"],
-  "include": ["build/assets"],   // keep build/assets, drop the rest of build/
-)
+# .moonignore
+build/*
+!build/assets/
 ```
 
-Legacy `moon.mod.json`: top-level `"exclude"` / `"include"` arrays.
-Always confirm the result with `moon package --list`.
+The old `options(exclude: [...], "include": [...])` in `moon.mod` still works
+but warns as deprecated — migrate it to ignore files. Always confirm the
+result with `moon package --list`.
 
 ## `scripts.postadd`
 
@@ -85,15 +92,22 @@ options(
 
 ## Dependency tooling
 
-- `moon tree` — display the dependency tree of the current module.
+- `moon tree` — display the dependency tree of the current module
+  (`--package [--target <backend>]` for package imports, `--json` for tooling).
+- `moon search <keyword>` / `moon view <user/module> [--versions]` — find
+  modules and inspect releases (including deprecation reasons).
+- `moon deprecate <user/module> --reason "..."` (`--undo` to restore,
+  `--dry-run` to preview) — mark **all** published versions of your module
+  deprecated; advisory only, consumers get a warning but MVS is unaffected.
 - `moon update` — refresh the registry index (do this when a freshly published
   version isn't found).
 - `moon install <source>` — install a **binary package** globally (to
   `~/.moon/bin/` by default, override with `--bin <dir>`). Source can be a
   local path, a git URL (`--rev/--branch/--tag`), or a registry path
   `user/module/pkg[@version]`; append `/...` to install all matching main
-  packages. Bare `moon install` (sync project deps) is deprecated — `moon
-  check/build/test` sync dependencies automatically.
+  packages. Only executable packages (`pkgtype(kind: "executable")`) are
+  installable. `moon install` requires a source — bare `moon install` no
+  longer syncs project deps (`moon check/build/test` do that automatically).
 - `moon upgrade [--dev]` — upgrades the **toolchain** (moon/moonc), not module
   dependencies; `--dev` installs the latest development version, `-f` forces.
   To bump a dependency, `moon add user/module@version` again.

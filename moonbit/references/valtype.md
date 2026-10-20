@@ -39,56 +39,29 @@ A **newtype over a scalar is itself a transparent scalar**: `struct RGB(UInt)`
 compiles so that `RGB::new` literally returns `uint32_t` — there is no wrapper
 struct. This is the key building block for the rules below.
 
-## Field / payload rules (strict — these are compile errors)
+## Field / payload rules (compile errors, error 4173)
 
-The two containers have *different* rules. A "scalar" is a primitive
-(`Int`/`UInt`/`Byte`/…) or a newtype over a scalar. A plain (non-`#valtype`)
-struct/enum is a **reference** (a pointer).
+Re-verified on moonc 0.10.16 (native and wasm-gc). Earlier compilers (≤ 0.10.10)
+also rejected nested value types, more than 6 struct fields, and non-scalar
+enum payloads; all three now compile (the first two per the 0.10.11 changelog). What
+remains:
 
-### `#valtype` struct
-
-Three restrictions:
-
-1. **All fields must be immutable** — a single `mut` field is rejected with
-   `Value type is not allowed for struct with mutable field`. A value type is
-   copied by value, so in-place mutation has no meaning; model updates as
-   functional `with_*` helpers that return a new value.
-2. **No field may be another `#valtype` type** (struct *or* enum) — you cannot
-   nest a value type inside a value type. Fields may be scalars, newtypes, or
-   reference types (a plain struct/enum field is a pointer, which is fine).
-
-| Field type | Result |
+| Declaration | Result |
 |---|---|
-| scalar / newtype-over-scalar | ✅ |
-| plain struct/enum (a reference/pointer field) | ✅ |
-| another `#valtype` struct **or** `#valtype` enum | ❌ `Value type is not allowed for type with nested value type field` |
-| any `mut` field | ❌ `Value type is not allowed for struct with mutable field` |
+| `#valtype` struct with any `mut` field | ❌ `Value type is not allowed for struct with mutable field` |
+| a value type that contains itself (directly or via another value type) | ❌ `Value type is not allowed for recursive value type` |
+| fields / payloads that are scalars, newtypes, plain (reference) structs/enums, or other `#valtype` types | ✅ |
+| more than 6 fields | ✅ (no field-count cap) |
 
-3. **At most 6 fields.** A 7th field is rejected with the same
-   `Value type is not allowed for type with nested value type field` (4173). The
-   cap is on **field count, not bytes**: 6× `UInt64` (48 B) is fine, 7× `Byte`
-   is not. A pointer field (reference type / `Array?`) counts as one field, same
-   as a scalar. To stay under the cap, pack several logical values into one wide
-   field yourself (e.g. two 26-bit colors + flags into one `UInt64`) and decode
-   in accessors — same trick as the `Byte`-packing gotcha above, applied to
-   field *count*.
-
-### `#valtype` enum
-
-Stricter: every payload must be a **scalar** (or newtype-over-scalar). **No
-struct payloads at all.**
-
-| Payload type | Result |
-|---|---|
-| scalar / newtype-over-scalar (e.g. `Rgb(RGB)` where `RGB` is `struct RGB(UInt)`) | ✅ |
-| plain struct | ❌ `Value type is not allowed for enum type with non-scalar field` |
-| `#valtype` struct | ❌ `Value type is not allowed for type with nested value type field` |
+A value type is copied by value, so in-place mutation has no meaning; model
+updates as functional `with_*` helpers that return a new value.
 
 A `#valtype` enum stays fully **pattern-matchable** (`match c { None => … ; Rgb(rgb) => … }`)
 and the payload binds the real type (e.g. a real `RGB`). Its layout is
 `{ uint32_t tag; uint32_t size; union { … } payload; }` — note the extra `size`
 word, so a small value enum is ~12 bytes, not "two words". You gain *no
-allocation*, not minimal size.
+allocation*, not minimal size. (Layout read from generated C on an earlier
+toolchain; re-check the C if size matters.)
 
 A **plain (reference) struct may freely hold `#valtype` fields** — only value
 *containers* are restricted. (E.g. a normal heap `CellStyle` can store inline

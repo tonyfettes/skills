@@ -1,6 +1,6 @@
 # MoonBit Control Flow
 
-Expressions-as-values, range/functional `for` loops, the functional `loop`, `while` as an expression, and labelled loops/blocks. Split out of `language.md`.
+Expressions-as-values, range/functional `for` loops (and the deprecated functional `loop`), `while` as an expression, and labelled loops/blocks. Split out of `language.md`.
 
 ## Control flow
 
@@ -51,7 +51,9 @@ The reverse pipe `f <| x` is `f(x)` (right-associative). It reads well for
 DSL-ish trailing arguments — e.g. `h1 <| [ ... ]` in rabbita views, and similar
 patterns in `moonbitlang/async` code. To pipe into a non-first argument, use an
 arrow lambda — the body needs braces (or parenthesize the whole lambda):
-`x |> y => { f(a, y) }`. A bare `x |> y => f(a, y)` is a parse error.
+`x |> y => { f(a, y) }`. A bare `x |> y => f(a, y)` is a parse error. The
+braced body may call async functions (moonc ≥ 0.10.13); the older
+`x |> fn(y) { ... }` form is deprecated.
 
 ### Functional `for` loop
 
@@ -88,14 +90,21 @@ pub fn binary_search(arr : ArrayView[Int], value : Int) -> Result[Int, Int] {
 ///|
 test "iteration" {
   let arr : Array[Int] = [1, 3, 5, 7, 9]
-  inspect(binary_search(arr, 5), content="Ok(2)")
+  debug_inspect(binary_search(arr, 5), content="Ok(2)")
   for i, v in arr {
     println("\{i}: \{v}")                    // i = index, v = value
   }
+  let mut total = 0
+  for (_name, count) in [("a", 1), ("b", 2)] { // irrefutable patterns destructure
+    total += count
+  }
+  assert_eq(total, 3)
 }
 ```
 
 **Prefer functional `for`** over imperative. For trivial loops, use `for x in collection` — no reasoning needed.
+`for .. in` binders (and comprehensions) accept irrefutable patterns — tuples,
+records — so destructure in the header instead of the first body line.
 
 #### Loop invariants (`where` clause)
 
@@ -120,40 +129,46 @@ Writing good invariants:
 3. **Edge cases with `||`** — e.g. `i == 0 || arr[i-1] < value`.
 4. **Reasoning covers three aspects** — Preservation (each `continue` maintains invariants), Termination (decreasing measure), Correctness (invariants at exit imply postcondition).
 
-### Functional `loop` (MoonBit-specific)
+### Functional `loop` is deprecated — use `for` with state
 
-Unlike `for`, `loop` pattern-matches on loop variables and uses `continue` with updated values. Great for tail-recursive-style algorithms:
+`loop (a, b) { pattern => ... }` warns `deprecated_syntax` (verified on moonc
+0.10.16). Rewrite it as a functional `for` with one binder per state value,
+`match` inside the body, `continue` with the new state, and an explicit
+`break value` for the result:
 
 ```mbt check
 ///|
 /// Pattern-match on a @list.List
 fn sum_list(list : @list.List[Int]) -> Int {
-  loop (list, 0) {
-    (Empty, acc) => acc
-    (More(x, tail=rest), acc) => continue (rest, x + acc)
+  for rest = list, acc = 0 {
+    match rest {
+      Empty => break acc
+      More(x, tail~) => continue tail, x + acc
+    }
   }
 }
 
 ///|
-/// Two-pointer search with loop
+/// Two-pointer search
 fn find_pair(arr : Array[Int], target : Int) -> (Int, Int)? {
-  loop (0, arr.length() - 1) {
-    (i, j) if i >= j => None
-    (i, j) => {
-      let sum = arr[i] + arr[j]
-      if sum == target {
-        Some((i, j))
-      } else if sum < target {
-        continue (i + 1, j)
-      } else {
-        continue (i, j - 1)
-      }
+  for i = 0, j = arr.length() - 1 {
+    if i >= j {
+      break None
+    }
+    let sum = arr[i] + arr[j]
+    if sum == target {
+      break Some((i, j))
+    } else if sum < target {
+      continue i + 1, j
+    } else {
+      continue i, j - 1
     }
   }
 }
 ```
 
-**`loop` requires a payload.** For an infinite loop, write `for ;; { ... }` — `loop { ... }` without arguments is invalid, and `for { ... }` is not the infinite-loop form either.
+For an infinite loop, write `for ;; { ... }` — `for { ... }` is not the
+infinite-loop form.
 
 ### `while` returns a value
 
@@ -263,10 +278,10 @@ fn with_raw_mode(term : Terminal) -> Unit raise {
 ```
 
 Prefer `defer` over duplicating cleanup in both the success path and a `catch`
-branch — for **sync** cleanup only. `defer` bodies cannot call async functions
-(compile error: "cannot call async function in defer"); async cleanup needs
-the two-path `catch`/normal split (factor it into a `with_*(async fn(x)
-{ ... })` fixture when it recurs across tests) or `TaskGroup::add_defer`.
+branch. `defer` / `errdefer` bodies may raise and may call async functions
+(moonc ≥ 0.10.9; verified on 0.10.16): a cleanup error replaces the pending
+error, and the remaining cleanups still run. `errdefer` runs only when the
+scope exits by an error.
 
 In `moonbitlang/async`, `defer` does run on cancellation; cancellation-safe
 async cleanup (`@async.protect_from_cancel` and its refinements,

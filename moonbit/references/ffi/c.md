@@ -5,7 +5,7 @@ Step-by-step workflow for binding any C library to MoonBit using native FFI.
 **Use this reference when**:
 - Adding `extern "c" fn` declarations for a C library
 - Writing C stub files (`moonbit.h`, `MOONBIT_FFI_EXPORT`)
-- Configuring `moon.pkg` / `moon.pkg.json` for native builds (`native-stub`, `link.native`)
+- Configuring `moon.pkg` for native builds (`native-stub`, `link.native`)
 - Choosing `#borrow` vs ownership transfer for FFI parameters
 - Wrapping C handles with external objects and finalizers
 - Implementing callback trampolines (closures or `FuncRef`)
@@ -65,21 +65,27 @@ options(
 options(
   "native-stub": ["stub.c"],
   targets: {
-    "ffi.mbt": ["native"]
+    "ffi.mbt": ["native"],
+  },
+  link: {
+    "native": {
+      "stub-cc-flags": "-DMY_LIB_STATIC",
+    },
   },
 )
 ```
 
-**Key fields:**
+**Key fields** (all inside `options(...)`; verified on moon 0.1.20261016 —
+`link(native(...))` does not parse):
 
 | Field | Purpose |
 |---|---|
 | `"native-stub"` | C source files to compile. Must be in the same directory as `moon.pkg`. |
 | `targets` | Gate `.mbt` files to backends: `"ffi.mbt": ["native"]` |
-| `link(native("cc-flags": ...))` | Compile flags (`-I`, `-D`). Only for system libraries. |
-| `link(native("cc-link-flags": ...))` | Linker flags (`-L`, `-l`). Only for system libraries. |
-| `link(native("stub-cc-flags": ...))` | Compile flags for stub files only |
-| `link(native(exports: ...))` | Export MoonBit functions to C (reverse direction) |
+| `link: { "native": { "cc-flags": ... } }` | Compile flags (`-I`, `-D`). Only for system libraries. |
+| `link: { "native": { "cc-link-flags": ... } }` | Linker flags (`-L`, `-l`). Only for system libraries. |
+| `link: { "native": { "stub-cc-flags": ... } }` | Compile flags for stub files only |
+| `link: { "native": { "exports": [...] } }` | Export MoonBit functions to C (reverse direction) |
 
 > **Warning — `supported_targets`:** Avoid package-wide `supported_targets = "native"` unless the whole package is native-only. Use `targets` to gate individual files when only the FFI file is native-specific.
 
@@ -186,7 +192,9 @@ No C stub wrapper or `moonbit_make_external_object` needed — the extern calls 
 | `#owned(param)` | Ownership transfers to C; C must `moonbit_decref` when done |
 
 Rules:
-- Annotate every non-primitive parameter as `#borrow` or `#owned`.
+- Annotate every non-primitive parameter as `#borrow` or `#owned` — an
+  unannotated pointer-typed parameter is a compile error (`unannotated_ffi`,
+  0055, error by default).
 - Primitives (`Int`, `UInt`, `Bool`, `Double`, etc.) are passed by value — no annotation needed.
 - If unsure whether C stores a reference, do NOT use `#borrow`.
 - Use `Ref[T]` with `#borrow` for output parameters where C writes a value back.
@@ -255,7 +263,7 @@ extern "c" fn foo_new_ffi(out : Ref[Foo], /* args */) -> Int
 
 ///|
 pub fn Foo::new(/* args */) -> Foo? {
-  let out = Ref::new(placeholder_ffi())    // placeholder_ffi() returns a valid-but-empty Foo
+  let out = Ref(placeholder_ffi())         // placeholder_ffi() returns a valid-but-empty Foo
   let code = foo_new_ffi(out, /* args */)
   if code == 0 { Some(out.val) } else { None }
 }
@@ -378,13 +386,13 @@ The `run-asan.mbtx` script lives under the skill's `scripts/` directory. See `c-
 
 11. **Reaching for runtime `dlopen`/`dlsym` to dodge link problems.** Loading symbols at runtime instead of `link.native` config is situational — legitimate for genuinely optional dependencies, wrong as a workaround for a toolchain limitation (e.g. tcc lacking `-framework` support in debug `moon test`). Before converting an existing link-config approach to `dlopen`, discuss with the user; prefer fixing or scoping the dev loop (e.g. release-mode tests) instead.
 
-12. **Disabling the bundled mimalloc (Linux allocator conflicts).** The toolchain (moonc ≥ v0.10.5) links mimalloc into every native executable via `$MOON_HOME/lib/libmoonbitrun.o`, which can crash libraries a MoonBit executable dlopens (observed with CEF: SIGSEGV inside glibc `malloc_usable_size`). That file contains only the allocator override — no MoonBit runtime symbols — so replacing it with an empty object cleanly restores libc malloc:
+12. **Disabling the bundled mimalloc (Linux allocator conflicts).** The toolchain (moonc ≥ v0.10.5) links mimalloc into every native executable via `$MOON_HOME/lib/libmoonbitrun.o`, which can crash libraries a MoonBit executable dlopens (observed with CEF: SIGSEGV inside glibc `malloc_usable_size`). Select the system allocator per build with an environment variable:
 
     ```sh
-    cc -c -x c /dev/null -o "${MOON_HOME:-$HOME/.moon}/lib/libmoonbitrun.o"
+    MOONBIT_ALLOCATOR=system moon build --target native   # or test/run; values: mimalloc | system
     ```
 
-    Re-apply after every toolchain install/update. moon does not track this file as a link input: delete previously built executables so they relink, then verify with `nm <exe> | grep -c mi_malloc` → 0. Windows variant: `c-asan.md`.
+    moon then compiles the runtime with `-DMOONBIT_ALLOCATOR=MOONBIT_ALLOCATOR_SYSTEM` and stops linking `libmoonbitrun.o`; setting `MOON_CC` has the same effect. Set it in every build (CI too) and verify with `nm <exe> | grep -c mi_malloc` → 0. Do **not** replace `libmoonbitrun.o` with an empty object any more: on moon 0.1.20261016 the runtime calls `mi_malloc`/`mi_free` directly, so the link fails with undefined `_mi_malloc`/`_mi_free`. MSVC (`cl.exe`) and tcc builds never use mimalloc.
 
 ## See also
 

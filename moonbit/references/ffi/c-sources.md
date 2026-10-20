@@ -40,14 +40,19 @@ No copying needed.
 
 Include only headers in the stub and supply linker flags in `moon.pkg`:
 
-```moonbit
-link(
-  native(
-    "cc-flags": "-I/path/to/include",
-    "cc-link-flags": "-L/path/to/lib -lmylib",
-  )
+```
+options(
+  link: {
+    "native": {
+      "cc-flags": "-I/path/to/include",
+      "cc-link-flags": "-L/path/to/lib -lmylib",
+    },
+  },
 )
 ```
+
+(`link` lives inside `options(...)` with quoted keys; a top-level
+`link(native(...))` does not parse on moon 0.1.20261016.)
 
 > **Portability warning:** `-I`/`-L`/`-l` flags are GCC/Clang conventions.
 > MSVC's `cl.exe` does not accept them.
@@ -113,5 +118,6 @@ relevant code is included.
 ### Updating `moon.pkg`
 
 When a library has many source files, the script should also update the
-`native-stub` array in `moon.pkg.json` programmatically to stay in sync with the
-files on disk.
+`native-stub` array in `moon.pkg` programmatically to stay in sync with the
+files on disk (legacy `moon.pkg.json` is rejected by current moon — run
+`moon fmt` to migrate it first).

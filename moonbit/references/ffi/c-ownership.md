@@ -7,9 +7,9 @@ patterns, see `c.md` Phase 2.
 ## `#owned(param)` Semantics
 
 The `#owned` annotation explicitly declares that ownership of the parameter
-transfers to C. C must call `moonbit_decref()` when done. Leaving parameters
-without an ownership annotation is deprecated — new code should use
-`#owned(param)` explicitly.
+transfers to C. C must call `moonbit_decref()` when done. Leaving a
+pointer-typed parameter without `#owned`/`#borrow` is a compile error
+(`unannotated_ffi`, 0055).
 
 **Primitives** (`Int`, `UInt`, `Bool`, `Double`, `Int64`, `UInt64`, `Byte`,
 `Float`): passed by value. No ownership concerns — no annotation needed.
@@ -38,7 +38,7 @@ What refcount operations are required for each action on a parameter:
 | Return | `moonbit_incref` |
 | End of scope | nothing |
 
-**`#owned` parameters (default if no annotation):**
+**`#owned` parameters:**
 
 | Operation | Required action |
 |---|---|
@@ -85,9 +85,9 @@ extern "C" fn __llvm_get_version(
 
 ///|
 pub fn llvm_get_version() -> (UInt, UInt, UInt) {
-  let major = Ref::new(0U)
-  let minor = Ref::new(0U)
-  let patch = Ref::new(0U)
+  let major = Ref(0U)
+  let minor = Ref(0U)
+  let patch = Ref(0U)
   __llvm_get_version(major, minor, patch)
   (major.val, minor.val, patch.val)
 }

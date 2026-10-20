@@ -2,7 +2,9 @@
 
 Command-line argument parsing with the stdlib `@argparse`, plus process
 arguments and environment variables via `@env`. All verified with moon
-0.1.20260629.
+0.1.20260629; examples re-checked on moon 0.1.20261016 (moonc v0.10.16).
+Both packages need explicit `moon.pkg` imports — using a core package without
+one warns `core_package_not_imported`.
 
 ## Argument parsing: `@argparse` (stdlib — never hand-roll an argv loop)
 

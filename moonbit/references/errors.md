@@ -15,20 +15,20 @@ Never collapse an error into a sentinel value: `catch { _ => "" }` (or `-1`, or 
 
 ```mbt check
 ///|
-suberror ValueError {
+priv suberror ValueError {
   ValueError(String)
 }
 
 ///|
-struct Position(Int, Int) derive(ToJson, Debug, Eq)
+priv struct Position(Int, Int)
 
 ///|
-pub(all) suberror ParseError {
+priv suberror ParseError {
   InvalidChar(pos~ : Position, Char)
   InvalidEof(pos~ : Position)
   InvalidNumber(pos~ : Position, String)
   InvalidIdentEscape(pos~ : Position)
-} derive(Eq, ToJson, Debug)
+}
 
 ///|
 fn parse_int(s : String, position~ : Position) -> Int raise ParseError {
@@ -64,16 +64,6 @@ fn use_parse(position~ : Position) -> Int raise ParseError {
 }
 
 ///|
-/// Convert to a Result by catching explicitly (replaces the deprecated `try?`)
-fn safe_parse(s : String, position~ : Position) -> Result[Int, ParseError] {
-  try parse_int(s, position~) catch {
-    err => Err(err)
-  } noraise {                                        // noraise block runs on success
-    v => Ok(v)
-  }
-}
-
-///|
 /// try-catch with specific patterns
 fn handle_parse(s : String, position~ : Position) -> Int {
   try parse_int(s, position~) catch {
@@ -83,6 +73,19 @@ fn handle_parse(s : String, position~ : Position) -> Int {
     }
     _ => 2
   }
+}
+
+///|
+test "convert to a value" {
+  // replaces the deprecated `try?`; keep `Result` as local data — a function
+  // returning `Result[T, SomeError]` warns `result_error_return` (0078):
+  // declare `-> T raise E` instead
+  let r : Result[Int, ParseError] = try parse_int("", position=Position(0, 0)) catch {
+    err => Err(err)
+  } noraise {
+    v => Ok(v)                                // noraise block runs on success
+  }
+  assert_true(r is Err(InvalidEof(_)))
 }
 ```
 
@@ -130,9 +133,10 @@ pub extend ShareError with Show::{to_string, output}
 
 The trailing `pub extend` line is required on moonc ≥ 0.10.13: without it the
 compiler warns `implicit_impl_as_method` (0079) that `to_string`/`output` are
-being promoted to methods implicitly. `derive(Debug)` on a suberror needs the
-same treatment (`pub extend E with @debug.Debug::{to_repr}`), so derive it
-only when something inspects the error.
+being promoted to methods implicitly. Every `derive(...)` on a non-`priv`
+suberror needs the same treatment (`pub extend E with @debug.Debug::{to_repr}`,
+or `#deprecated pub extend ...` to retire the method — see `derive.md`), so
+derive only what something actually uses.
 
 Binding several variants in a `catch` gives an `Error`, and interpolation
 still reaches the suberror's `Show`:
@@ -169,7 +173,7 @@ Without `raise?`, `map` would unconditionally appear to raise, polluting all cal
 `noraise` makes the no-raise contract explicit on a signature. You'll see it most often on `async` functions (which otherwise raise implicitly):
 
 ```mbt nocheck
-async fn pure_async() -> Int noraise { 42 }
+async fn tick() -> Unit noraise { @async.sleep(10) }   // sleep is itself noraise
 ```
 
 ### `Error` bound on generics
@@ -199,6 +203,18 @@ try {
   E1(_) => ...
   E2    => ...
   e     => raise e                    // re-raise anything else
+}
+```
+
+`E::_` matches **any** constructor of suberror `E` (verified on moonc 0.10.16), so an
+`Error` can be narrowed by type without listing variants; `E::_ as err` binds
+`err : E`, keeping `E`'s own impls (`Repr(err)` needs `E : Debug`):
+
+```mbt nocheck
+f() catch {
+  ParseError::_ as err => report(err)  // err : ParseError
+  IoError::_ => retry()
+  e => raise e
 }
 ```
 

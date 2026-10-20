@@ -54,7 +54,11 @@ Generated layout: `moon.mod.json` at root; `gen/` holds export bindings —
 implement your logic in `gen/interface/<pkg-path>/stub.mbt` (bodies are the
 `...` placeholder, which `moon check --target wasm` flags as unfinished code);
 `world/` (top level) holds import bindings; `ffi/` is low-level glue. Newer
-wit-bindgen may emit `moon.pkg` instead of `moon.pkg.json`.
+wit-bindgen may emit `moon.pkg` instead of `moon.pkg.json`. Current moon
+(0.1.20261016) rejects the legacy JSON files for ordinary commands — run
+`moon fmt` once to migrate them to `moon.mod` / `moon.pkg`. `--derive-show`
+emits `derive(Show)`, which current compilers flag as deprecated for
+debugging output; prefer `derive(Debug)` in hand-written code.
 
 ## 3. Implement, build, componentize
 
