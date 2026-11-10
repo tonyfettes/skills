@@ -6,18 +6,14 @@ description: Use when writing or modifying update functions or views in Rabbita 
 # Rabbita
 
 Baseline: **Rabbita 0.17.0** (checked against the published package source,
-2026-11-10; moonc v0.10.20). Check the project's `moon.mod` pin; older pins may
-still carry the deprecated shapes listed below. A `moon.work` workspace resolves
-one Rabbita version for every member — per-module pins are not a thing. Changes
-since 0.16.5: `auto_complete?` / `Attrs::autocomplete` take a `String` token
-list (`"off"`, `"current-password"`, ...) — the `AutoComplete` enum is gone
-(0.17.0); `Attrs::attribute(key, value)` is public as a raw-attribute escape
-hatch, unsanitized (0.17.0); root-relative `@http` URLs (`"/api/x"`) resolve
-against the origin again, other relative URLs against `document.baseURI`
-(0.16.7); `@dom` gained media track lists and `TimeRanges` (0.16.7). Earlier:
-`read_only~` and other camelCase boolean props actually apply (0.16.4);
-requires `moonbitlang/async` 0.22 (0.16.3); a hand-written `@cmd.Context` impl
-renames `get_origin` → `get_base_uri` (0.16.5).
+2026-11-10; moonc v0.10.20). Check the project's `moon.mod` pin. A `moon.work`
+workspace resolves one Rabbita version for every member — per-module pins are
+not a thing. Rabbita requires `moonbitlang/async` 0.22. Facts the compiler will
+not tell you: `auto_complete?` / `Attrs::autocomplete` take a `String` token
+list (`"off"`, `"current-password"`, ...), not an enum; `Attrs::attribute(key,
+value)` is a public, unsanitized raw-attribute escape hatch; root-relative
+`@http` URLs (`"/api/x"`) resolve against the origin, other relative URLs
+against `document.baseURI`.
 
 A Rabbita app is a tree of **components**: ordinary functions returning
 `Val[Html]` that run once at mount to build an incremental graph. Inside a
@@ -44,18 +40,9 @@ is enforced through effect-package design, model structure, and testing.
 
 `Emit[Msg]` is a callable `(Msg) -> Cmd`: `emit(Inc)` yields a Cmd (usable directly as `on_click=emit(Inc)`), and `emit.map(payload => Msg(payload))` adapts it to `Emit[Payload]` for subsystem APIs. Keep emit lambdas short: `x => emit(UserMsg(x))`.
 
-> Deprecated names you may see in old code (they compile with a warning; apply
-> the replacement): `Dispatch[Msg]` (now `Emit`); `cell`, `cell_with_emit`,
-> `simple_cell`, `simple_cell_with_emit`, `static_cell`, `Cell` (now a
-> component calling `create_state` / `create_pure_state` / `Val::constant`);
-> the old update shape `(Emit, Msg, Model) -> (Cmd, Model)` (now
-> `(Model, Msg, Emit) -> (Model, Cmd)`); `@cmd.raw_effect` (now
-> `@cmd.custom_cmd`); `@js.Nullable::get_exn` / `@js.Optional::get_exn` (now
-> `unwrap` / `to_option`). Removed outright (compile error, no shim):
-> `App::with_init(cmd)` (now `create_state_with_init`) and
-> `App::with_route(url_changed=...)` (now `@sub.on_url_changed` /
-> `@sub.on_url_request` subscriptions). Migrate to the new names; do not
-> introduce the old ones.
+> Removed outright, with no shim or hint: `App::with_init(cmd)` (use
+> `create_state_with_init`) and `App::with_route(url_changed=...)` (use the
+> `@sub.on_url_changed` / `@sub.on_url_request` subscriptions).
 
 ## The Three Rules
 
@@ -188,7 +175,6 @@ Label every non-obvious `Msg` payload — `AgentProgress(run_id~ : Int, Event)`,
 - Update branch that calls a function then returns `(model, @rabbita.none)`
 - Conditional sibling rendered before a focus-holding element in an `Array` child list (index shift = focus loss); a dynamic list rendered as `Array[Html]` instead of keyed `Map[String, Html]`
 - A raise-capable call inside `view` without a catch-and-fallback at the boundary
-- Deprecated names (`Dispatch`, `cell` family, `with_init`, `raw_effect`) in new code
 - A component taking plain parameters the parent recomputes, or a stateful component instantiated per list row
 - A subscription loader that calls `get_element_by_id` (or any DOM lookup) synchronously
 - A unit or e2e test asserting Rabbita's own behavior: DOM node identity, `isConnected`, diff output

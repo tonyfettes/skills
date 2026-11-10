@@ -189,8 +189,8 @@ let c0 : Char? = s.get_char(0)          // option<char>
 ```
 
 `String[i]` is also not a safe general-purpose text operation: it aborts out of
-range and can land inside a surrogate pair. Bracket slicing `s[a:b]` no longer
-aborts (moonc ≥ 0.10.13): bounds are clamped to the string, an inverted range is
+range and can land inside a surrogate pair. Bracket slicing `s[a:b]` does not
+abort: bounds are clamped to the string, an inverted range is
 empty, and a bound that splits a surrogate pair moves inward — so it can
 silently drop a character (`split_at(i)` partitions losslessly).
 `exact_view(start~, end~)` is the strict form (aborts on a bad bound);
@@ -212,7 +212,7 @@ Do not default to `[]` indexing or `[:]` slicing for user text.
 
 **Safe string truncation** is plain slicing (or the equivalent
 `clamped_view`): the range is clamped and a surrogate pair is dropped whole
-rather than split (`substring` is deprecated — use `s[:]`):
+rather than split:
 
 ```mbt nocheck
 let short = text[:max].to_owned()                      // at most one char shorter than max
@@ -228,8 +228,7 @@ let title = title.trim()[:1024 / 3].to_owned()   // ≤ 1024 UTF-8 bytes
 
 ### `trim`/slicing return `StringView`, not `String`
 
-`String::trim`, `trim_start`, `trim_end` (`trim_space` is deprecated — use
-`trim`), and `[a:b]` slicing all
+`String::trim`, `trim_start`, `trim_end`, and `[a:b]` slicing all
 return a **`StringView`** (a borrowed slice — no allocation), not a `String`:
 
 ```mbt nocheck
@@ -247,10 +246,8 @@ This matters when you compare or pass the result:
   ```
 
 - **To materialize an owned `String`, use `to_owned()`** (e.g. when a
-  `String` field/return is required, or to escape the borrow). Do NOT use
-  `to_string()` for this — on a view it's the deprecated `Show` display path and
-  the compiler warns: *"Use `to_owned` to allocate an owned String from a
-  StringView; use `Show::to_string` or format strings for display."*
+  `String` field/return is required, or to escape the borrow). `to_string()`
+  is the display path, not a conversion.
 
   ```mbt nocheck
   let owned : String = captured.trim().to_owned()   // not .to_string()

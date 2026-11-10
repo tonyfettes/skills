@@ -232,8 +232,7 @@ test "=~ in guard" {
 Semantics and gotchas:
 
 - **First-match, not longest-match** — both `Regex::execute` and `=~` return
-  the first match from the search position. Longest-match mode does not exist
-  (the deprecated `lexmatch ... with longest` had it; `=~` will not).
+  the first match from the search position. Longest-match mode does not exist.
 - **`\d` `\D` `\s` `\S` `\w` `\W` are NOT supported.** Use POSIX classes
   inside brackets: `[[:digit:]]`, `[[:space:]]`, `[[:word:]]`, `[[:alpha:]]`,
   `[[:xdigit:]]`; negate as `[^[:digit:]]`.
@@ -249,4 +248,3 @@ Semantics and gotchas:
   contexts. No lookahead/lookbehind/backreferences.
 - Quantifiers: `*` `+` `?` `{n}` `{n,}` `{n,m}` plus non-greedy `?` variants;
   groups `(...)`, `(?:...)`; alternation `|`.
-- `lexmatch` / `lexmatch?` are deprecated — write new code with `=~`.

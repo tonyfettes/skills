@@ -18,7 +18,7 @@ editing C FFI bindings or stubs.
 ///|
 test "bytes literals and indexing" {
   let b0 : Bytes = b"abcd"
-  let b1 : Bytes = b"abcd"                  // always use the b" prefix (bare string literal as Bytes is deprecated)
+  let b1 : Bytes = b"abcd"                  // always use the b" prefix
   let b2 : Bytes = [0xff, 0x00, 0x01]       // array literal overloading
   guard b0 is [b'a', ..] && b0[1] is b'b' else {
     fail("unexpected bytes content")
@@ -38,13 +38,12 @@ test "bytes literals and indexing" {
 | `@buffer.Buffer` | owned, mutable builder | yes | incremental construction, then `contents()` |
 
 `MutArrayView[Byte]` comes from `data.mut_view(...)` and writes through to the
-underlying array; `Buffer()` (the prelude constructor — `@buffer.new()` is
-deprecated) accumulates writes and yields `Bytes`. `Buffer()` alone needs no
+underlying array; `Buffer()` (the prelude constructor) accumulates writes and yields `Bytes`. `Buffer()` alone needs no
 import; a `moonbitlang/core/buffer` import that only the prelude name uses
 warns `unused_package` (0029) — import it only to write `@buffer.Buffer`. Text
 goes in with an explicit encoding (`write_string_utf8`, `write_char_utf8`,
-`write_string_utf16le`): `Buffer::write_string`/`write_char` and its `Logger`
-impl are removed in core 0.10.16 — use `StringBuilder` for `Logger` APIs:
+`write_string_utf16le`): `Buffer` has no `write_string` / `write_char` or `Logger` impl — use
+`StringBuilder` for `Logger` APIs:
 
 ```mbt check
 ///|
@@ -54,7 +53,7 @@ test "mutable byte storage" {
   mv[0] = b'X'                          // writes through to `data`
   assert_true(data[1] is b'X')
 
-  let buf = Buffer()                    // @buffer.new() is deprecated
+  let buf = Buffer()
   buf.write_byte(b'h')
   buf.write_bytes(b"i!")
   let out : Bytes = buf.contents()

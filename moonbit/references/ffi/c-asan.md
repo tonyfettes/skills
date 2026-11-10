@@ -44,8 +44,7 @@ migrate first.
 Note for multiple packages, you need to include all packages with `native-stub`
 and all entry packages. A package is an entry package if:
 
-1. It is an executable package (`pkgtype(kind: "executable")`, or the
-   deprecated `"is-main": true`).
+1. It is an executable package (`pkgtype(kind: "executable")`).
 2. It contains tests.
 
 ---

@@ -66,7 +66,7 @@ This is the construction-side counterpart of the `..` rest pattern.
 test "map literals and common operations" {
   let map : Map[String, Int] = { "a": 1, "b": 2, "c": 3 }
   let empty : Map[String, Int] = Map([])                // bare `{}` warns ambiguous_braces (0082)
-  let sized : Map[String, Int] = Map([], capacity=64)   // Map::new() is deprecated
+  let sized : Map[String, Int] = Map([], capacity=64)
   let from_pairs : Map[String, Int] = Map::from_array([("x", 1), ("y", 2)])
 
   map["new-key"] = 3
@@ -108,7 +108,7 @@ Use views for:
 - Passing slices without allocation
 - Avoiding copies of large sequences
 
-Convert back with `.to_owned()` when you need ownership (works on all view types). Do NOT use `.to_string()` (deprecated `Show` display path on views) or `.to_array()` for this — see the `trim`/`StringView` gotcha in `language.md` and `strings-regex.md`.
+Convert back with `.to_owned()` when you need ownership (works on all view types). Not `.to_string()` (display path) or `.to_array()` — see the `trim`/`StringView` gotcha in `language.md` and `strings-regex.md`.
 
 
 ## Iterators: `Iter[T]` and `Iter2[A, B]`

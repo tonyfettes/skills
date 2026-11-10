@@ -94,7 +94,7 @@ fn test_emit() -> Emit[Msg] {
 ```
 
 (`Emit[Msg]` is `pub(all) struct Emit[Msg]((Msg) -> Cmd)`, so it can be
-constructed directly. `Dispatch` is the deprecated old name.)
+constructed directly.)
 
 ## What NOT to test in unit tests
 

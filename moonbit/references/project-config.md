@@ -131,10 +131,8 @@ pkgtype(kind: "executable")
 ```
 
 `pkgtype(kind: ...)` sets the package kind: `"library"` (default),
-`"executable"` (has `fn main`; replaces the deprecated
-`options("is-main": true)`), or `"foreign_library"` (force-linked for foreign
-consumers; replaces the deprecated `options(link: true)`). `moon fmt` rewrites
-the deprecated spellings. Keep executables as entry points only: importing an
+`"executable"` (has `fn main`), or `"foreign_library"` (force-linked for
+foreign consumers). Keep executables as entry points only: importing an
 executable package from another package warns now and is slated to become an
 error — move reusable code into a library package.
 
@@ -172,9 +170,7 @@ spellings to these):
 
 Settings without a direct form stay in `options(...)` (object keys inside
 `{ }` must be quoted strings — unquoted keys are a parse error): `targets`,
-`link`, `"native-stub"`, `overrides`, `"bin-name"`, `"bin-target"`, legacy
-`"pre-build"`. `"test-import-all": true` is deprecated (`deprecated_syntax`
-warning) — use explicit `using` declarations instead.
+`link`, `"native-stub"`, `overrides`, `"bin-name"`, `"bin-target"`.
 
 Packages are per directory. Directories without a `moon.pkg` are not recognized as packages.
 
@@ -344,8 +340,7 @@ options(
 ```
 
 Full per-backend key set (`//` comments are annotations only). To force-link
-a non-executable package, use `pkgtype(kind: "foreign_library")`, not the
-deprecated boolean `link: true`.
+a non-executable package, use `pkgtype(kind: "foreign_library")`.
 
 ```
 options(
@@ -438,10 +433,8 @@ dev_build(rule: "embed", input: "data.txt", output: "embedded.mbt")
   commit the generated outputs so downstream builds work.
 - Generated outputs are skipped by `moon fmt` automatically.
 
-The older `options("pre-build": [{ "input": ..., "output": ..., "command": ... }])`
-form still works; prefer `rule`/`dev_build`. Moon no longer runs `moonlex` /
-`moonyacc` on `.mbl` / `.mby` files automatically: declare them as a
-`dev_build` input with an explicit generator rule (an undeclared `.mbl`/`.mby`
+Moon does not run `moonlex` / `moonyacc` on `.mbl` / `.mby` files
+automatically: declare them as a `dev_build` input with an explicit generator rule (an undeclared `.mbl`/`.mby`
 in a package is a migration error), and commit the generated `.mbt`.
 
 Generated code example:

@@ -7,7 +7,7 @@ Tailwind, CSS import, or build step: base styles are inline, and `@rui.theme`
 emits the small sheet for hover, focus and motion.
 
 Baseline: **rui 0.5.0** (2026-11-10). It is marked experimental, and APIs change
-between minor versions. It pins `rabbita@0.17.0` (0.4.x pinned 0.16.4). In a
+between minor versions. It pins `rabbita@0.17.0`. In a
 `moon.work` workspace only one Rabbita resolves, so bump rui and Rabbita together.
 
 To check an API, open `pkg.generated.mbti` in the registry cache

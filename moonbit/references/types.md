@@ -255,8 +255,8 @@ pub fn describe(event : @base.LogEvent[String]) -> String {
 - A `match` without a wildcard arm is a partial-match error — new constructors can always appear elsewhere.
 - Visibility sits on each `+=` block: `pub` constructors are matchable outside
   but not constructible (4036); `pub(all)` allows outside construction.
-  Constructors in the declaration itself (`pub(all) extenum E { A }`) are
-  deprecated syntax (verified on moonc 0.10.16).
+  Declare constructors in `+=` blocks, not in the declaration itself
+  (`pub(all) extenum E { A }`).
 
 ### `#non_exhaustive` enums
 
@@ -284,8 +284,7 @@ match mode {
 
 ### No local types
 
-A `struct`/`enum` declared inside a function body is a parse error on current
-toolchains (it was deprecated earlier), even though older docs present it as a
+A `struct`/`enum` declared inside a function body is a parse error, even though older docs present it as a
 feature. Define types at toplevel.
 
 ### Newtype / tuple-struct
@@ -317,12 +316,12 @@ pub type UserId = Int                       // Int is aliased to UserId (symlink
 
 ### Derivable traits
 
-Most types can auto-derive standard traits with a `#derive(...)` attribute line above the declaration (postfix `} derive(...)` is deprecated):
+Most types can auto-derive standard traits with a `#derive(...)` attribute line above the declaration:
 
 | Trait | Enables |
 |---|---|
-| `Debug` | `debug_inspect()` for structural test/diagnostic output — the derivable default for your own data types. For interpolation of composed values use `\{Repr(value)}` (`to_repr` is its deprecated old name) |
-| `Show` | Specialized display strings (JSON, XML, user-facing text). Deriving it for debugging is deprecated in favor of `Debug`; write a manual `impl Show for T with output(self, logger) { ... }` only for genuine display formats |
+| `Debug` | `debug_inspect()` for structural test/diagnostic output — the derivable default for your own data types. For interpolation of composed values use `\{Repr(value)}` |
+| `Show` | Specialized display strings (JSON, XML, user-facing text). Derive `Debug`, not `Show`, for debugging; write a manual `impl Show for T with output(self, logger) { ... }` only for genuine display formats |
 | `Eq` | `==`, `!=` |
 | `Compare` | `<`, `>`, `<=`, `>=` |
 | `ToJson` | `json_inspect()` for readable test output |

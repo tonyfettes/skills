@@ -4,18 +4,17 @@ Configuring auto-derived traits. For the bare list of derivable traits, see `typ
 
 ## Quick rules
 
-- Write derives as an attribute line directly above the declaration (after any `///|` / doc comment): `#derive(Debug, Eq)` then `pub struct T { ... }`. The old postfix form `} derive(...)` warns `deprecated_syntax` (0027) since moonc 0.10.19; `moon fmt` rewrites it to the attribute form.
+- Write derives as an attribute line directly above the declaration (after any `///|` / doc comment): `#derive(Debug, Eq)` then `pub struct T { ... }`.
 - A trait `T` can be derived only if every field used in the type already implements `T`.
-- Always derive `Debug` and `Eq` on data types; add `ToJson` if you `json_inspect` them in tests. Deriving `Show` for debugging is deprecated — reserve `Show` for genuine display formats via a manual `impl Show for T with output(...)`.
-- For `FromJson` / `ToJson` arguments more advanced than `style`, `rename_fields`, and per-field `rename`, **manually implement the trait** — many older args (`repr`, `case_repr`, `default`, `rename_all`) have been deprecated.
+- Always derive `Debug` and `Eq` on data types; add `ToJson` if you `json_inspect` them in tests. Reserve `Show` for genuine display formats via a manual `impl Show for T with output(...)`.
+- For `FromJson` / `ToJson` arguments more advanced than `style`, `rename_fields`, and per-field `rename`, **manually implement the trait** — not the old `repr` / `case_repr` / `default` / `rename_all` arguments.
 - On a non-`priv` type every derive warns `implicit_impl_as_method` (0079) until you add `extend` lines — see below.
 
 ## Derives and `extend` lines (warning 0079)
 
 Derived impls are `pub`, and the compiler still attaches their methods to the
-type as regular methods (`x.to_json()`, `T::default()`) — a deprecated implicit
-promotion that warns on moonc ≥ 0.10.14 (verified on 0.10.16, core does the
-same in its `extends.mbt` files). Say explicitly which methods stay:
+type as regular methods (`x.to_json()`, `T::default()`) — an implicit
+promotion that warns (core adds the same lines in its `extends.mbt` files). Say explicitly which methods stay:
 
 ```mbt check
 ///|
@@ -53,8 +52,8 @@ pub extend Level with @debug.Debug::{to_repr} // `debug_inspect` / `Repr(x)` sti
 
 | Trait | Enables |
 |---|---|
-| `Debug` | `debug_inspect()`, `\{Repr(value)}` interpolation (`to_repr` is its deprecated old name) — the derivable default for data types |
-| `Show` | `to_string()`, string interpolation `\{value}` — manual `impl` for display formats; deriving for debugging is deprecated |
+| `Debug` | `debug_inspect()`, `\{Repr(value)}` interpolation — the derivable default for data types |
+| `Show` | `to_string()`, string interpolation `\{value}` — manual `impl` for display formats; derive `Debug` for debugging instead |
 | `Eq` | `==`, `!=` |
 | `Compare` | `<`, `>`, `<=`, `>=` (orders enums by definition order) |
 | `Default` | `Default::default()` (`T::default()` needs `pub extend T with Default::{default}`) |
@@ -149,6 +148,6 @@ struct JsonTest3 {
 
 - You need custom keys, conditional fields, computed fields, or version migration.
 - You need a layout that's neither `legacy` nor `flat` (e.g. internally-tagged objects).
-- You need anything from the deprecated argument list (`repr`, `case_repr`, `default`, `rename_all`).
+- You need what the old `repr` / `case_repr` / `default` / `rename_all` arguments did.
 
 `impl ToJson for MyType with to_json(self) { ... }` and `impl FromJson for MyType with from_json(json) { ... }` are usually clearer than fighting the derive macro.

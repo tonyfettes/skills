@@ -1,6 +1,6 @@
 # MoonBit Control Flow
 
-Expressions-as-values, range/functional `for` loops (and the deprecated functional `loop`), `while` as an expression, and labelled loops/blocks. Split out of `language.md`.
+Expressions-as-values, range/functional `for` loops (including state loops), `while` as an expression, and labelled loops/blocks. Split out of `language.md`.
 
 ## Control flow
 
@@ -52,8 +52,7 @@ DSL-ish trailing arguments — e.g. `h1 <| [ ... ]` in rabbita views, and simila
 patterns in `moonbitlang/async` code. To pipe into a non-first argument, use an
 arrow lambda — the body needs braces (or parenthesize the whole lambda):
 `x |> y => { f(a, y) }`. A bare `x |> y => f(a, y)` is a parse error. The
-braced body may call async functions (moonc ≥ 0.10.13); the older
-`x |> fn(y) { ... }` form is deprecated.
+braced body may call async functions.
 
 ### Functional `for` loop
 
@@ -120,19 +119,16 @@ for ... {
 }
 ```
 
-(The older `invariant:` / `reasoning:` keys are deprecated — `reasoning:` already
-warns; use the `proof_`-prefixed names.)
-
 Writing good invariants:
 1. **Checkable** — use valid boolean expressions over loop variables.
 2. **Boundary witnesses** — for "all elements in arr[0..i)" properties, check only boundary elements.
 3. **Edge cases with `||`** — e.g. `i == 0 || arr[i-1] < value`.
 4. **Reasoning covers three aspects** — Preservation (each `continue` maintains invariants), Termination (decreasing measure), Correctness (invariants at exit imply postcondition).
 
-### Functional `loop` is deprecated — use `for` with state
+### State loops: functional `for`, not `loop`
 
-`loop (a, b) { pattern => ... }` warns `deprecated_syntax` (verified on moonc
-0.10.16). Rewrite it as a functional `for` with one binder per state value,
+Write a state loop (not `loop (a, b) { pattern => ... }`) as a functional
+`for` with one binder per state value,
 `match` inside the body, `continue` with the new state, and an explicit
 `break value` for the result:
 
@@ -190,8 +186,7 @@ test "while with break value" {
 }
 ```
 
-The no-break block on `while` / functional `for` is spelled `nobreak { ... }`;
-the old `else { ... }` spelling is deprecated (warns, `moon fmt` migrates it).
+The no-break block on `while` / functional `for` is spelled `nobreak { ... }`.
 
 ### Labelled loops
 
@@ -278,8 +273,8 @@ fn with_raw_mode(term : Terminal) -> Unit raise {
 ```
 
 Prefer `defer` over duplicating cleanup in both the success path and a `catch`
-branch. `defer` / `errdefer` bodies may raise and may call async functions
-(moonc ≥ 0.10.9; verified on 0.10.16): a cleanup error replaces the pending
+branch. `defer` / `errdefer` bodies may raise and may call async functions:
+a cleanup error replaces the pending
 error, and the remaining cleanups still run. `errdefer` runs only when the
 scope exits by an error.
 

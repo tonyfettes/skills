@@ -24,7 +24,7 @@ imports, conditional compilation, link config, warnings, pre-build) is in
   ```bash
   moon run -e 'fn main { println("Hello, MoonBit!") }'
   ```
-- `moon run --target wasm <pkg>` — run a local package as linear-memory Wasm (`moon runwasm` is deprecated); `moonx user/module/pkg@1.2.3 [args]` runs a registry executable or a `.mbtx` script without installing it
+- `moon run --target wasm <pkg>` — run a local package as linear-memory Wasm; `moonx user/module/pkg@1.2.3 [args]` runs a registry executable or a `.mbtx` script without installing it
 - `moon build` — build project (`--target` supported)
 - `moon check` — type check without building. Use REGULARLY — it is fast. (`--target` supported.) A successful check also refreshes each local package's `pkg.generated.mbti` (only when its content changed; `--no-mbti` skips this), so expect `.mbti` diffs after plain `moon check`
 - `moon check --warn-list +unnecessary_annotation` — enable warning 73 for redundant annotations and over-qualified constructors
@@ -90,7 +90,7 @@ Then `git status` — include any files they produce in the commit.
 - `moon test path/to/file_test.mbt -i 2` — run only the 3rd test of one file (`-i 0-2` for a range; `--doc-index` for doc tests)
 - `moon test --build-only` — compile tests without running them
 - `moon test -l 4` — cap snapshot-update passes for `-u` (default 256); lower it when a non-converging `inspect` keeps rewriting itself
-- Doc tests run as part of plain `moon test`; never pass `--doc` / `--serial` (deprecated no-ops, removed upstream after moon 0.1.20261016)
+- Doc tests run as part of plain `moon test`; no extra flag
 - `moon bench` — run `bench` blocks; select with `-p <pkg> -f <file> -i <index>`, plus `--build-only` and `--no-parallelize`. See `optimization.md` ("Benchmarking with `@bench.T`").
 - `moon coverage analyze` — coverage analysis (runs the instrumented tests itself). Common forms:
   ```

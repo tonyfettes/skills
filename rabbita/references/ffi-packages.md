@@ -153,8 +153,7 @@ scheduled by the runtime, not called by update).
 
 `element.children` / `element.childNodes` / `getElementsBy*` are **live**
 collections. Rabbita's own `@dom.Element::get_children` returns the live
-`HTMLCollection` (typed as such since 0.16; older pins mistyped it as
-`Array[Element]`), and `HTMLCollection::iter()` reads `item(index)` lazily
+`HTMLCollection`, and `HTMLCollection::iter()` reads `item(index)` lazily
 while you iterate. Mutating the DOM inside the loop shifts the collection under
 the cursor:
 
@@ -177,8 +176,7 @@ for child in parent.get_children().iter().to_array() {
 ```
 
 or, in your own extern, `Array.from(element.children)` and return
-`FixedArray[@dom.Element]` (moonc ≥ 0.10.16 deprecates `Array` in JS FFI
-signatures: "Use `FixedArray` instead").
+`FixedArray[@dom.Element]`.
 
 A `firstChild`-drain loop is the other correct shape, but don't build it on
 `@dom.Node::get_first_child` — that binding is typed plain `Node` while the DOM
@@ -252,8 +250,7 @@ This makes it **impossible** for update to call side effects directly — the on
 | Startup command | `@rabbita.create_state_with_init(init=emit => (model, cmd), update~)` |
 | Load-once resource | `@rabbita.create_resource(inject => @http.get(url).expect_json(inject))` → `Val[Status[T]]` |
 
-(For async operations, see "Closing the loop" above. `raw_effect` is a
-deprecated alias of `custom_cmd`; `App::with_init` no longer exists.)
+(For async operations, see "Closing the loop" above.)
 
 `custom_cmd` builds a `LegacyEffect` on top of the `@cmd.Op` / `extenum
 @cmd.Extension` machinery that the built-in packages use (`op.request(...)`

@@ -39,8 +39,7 @@ timers, cancellation), `@async/aqueue`, `@async/fs`, `@async/stdio`,
    )
    ```
 2. In the executable's `moon.pkg`, mark it executable, restrict to native, and
-   import what you need (`options("is-main": true)` is the deprecated
-   spelling; `moon fmt` rewrites it to `pkgtype`):
+   import what you need:
    ```
    import {
      "moonbitlang/async",
@@ -107,7 +106,6 @@ is idempotent: one `defer x.close()` at the top of the owning task is the whole
 cleanup, and an explicit `close()` before it is noise.
 
 For `spawn_bg` / `spawn` closures, use `() => { ... }` or `async fn() { ... }`.
-Avoid `fn() { ... }` because it triggers deprecated async syntax warnings.
 Forms like `async () => ...`, `fn() async { ... }`, and `fn(args) async { ... }`
 are parse errors.
 
@@ -134,19 +132,17 @@ In async code, don't write a catch-all branch like `catch { _ => () }` unless
 the operation is genuinely best-effort (a clipboard helper, an optional
 probe) and its failure is harmless.
 
-Since `moonbitlang/async` 0.22.0, cancellation is not an error: it propagates
+Cancellation is not an error: it propagates
 like one and runs `defer`/`errdefer`, but `catch` cannot capture it. So a
 catch-all no longer swallows cancellation, and the old guard arm
 `error if @async.is_being_cancelled() => raise error` is dead code — don't
 write it, and remove it when touching code that has it.
-`@async.is_cancellation_error` is deprecated (always `false`).
 
 `is_being_cancelled()` is still useful in one case: a catch-all inside a loop
 body, where the loop would otherwise keep retrying while the task is being
 cancelled. To react to cancellation itself, use
 `@async.handle_cancellation(f)` (returns `None` when `f` was cancelled; the
-task stays cancelled). `with_cancellation_handler` is deprecated in its favor
-(async 0.22.5+).
+task stays cancelled).
 
 ### `nocancel` functions
 
@@ -225,15 +221,10 @@ as every other transport error rather than becoming a second branch.
 
 ## Small API notes (async 0.22.9)
 
-- `@async.platform` (`Linux | MacOS | Windows`) replaces the third-party
-  `tonyfettes/platform` package for OS checks: `if @async.platform is Windows`.
-- `@fs.write_file(path, data, create_mode?, permission?, sync?, append?)` —
-  the old `create=0o644` argument no longer exists; pass
-  `create_mode=CreateOrTruncate` (or `OpenExisting`, `TruncateExisting`,
-  `OpenOrCreate`, `CreateNew`) and `permission=0o644`.
-- Passing a `@pipe.PipeRead` / `PipeWrite` straight to `stdin=` / `stdout=` is
-  deprecated; create the channel with `@process.write_to_process()` /
-  `read_from_process()` or `@process.pipe()`.
+- OS checks: `if @async.platform is Windows` (`Linux | MacOS | Windows`).
+- `@fs.write_file(path, data, create_mode=CreateOrTruncate, permission=0o644)`;
+  the other modes are `OpenExisting`, `TruncateExisting`, `OpenOrCreate`,
+  `CreateNew`.
 - `@socket.TcpServer(addr, reuse_port_lb=true)` sets `SO_REUSEPORT` so several
   worker processes can bind one address with kernel load balancing — Linux
   only; ignored on macOS/BSD/Windows.

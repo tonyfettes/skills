@@ -9,7 +9,7 @@ MoonBit uses checked error-throwing, not unchecked exceptions. All errors are su
 - `expr catch { ... }` or `try { } catch { } [noraise { }]` — handle explicitly.
 - `try! expr` — abort if it raises.
 
-Do not use the legacy `function_name!(...)` / `function_name(...)?` syntax for new code. `try?` (convert to `Result[_, _]`) is **removed** — a parse error (3002) on moonc 0.10.20. Write `try Some(f()) catch { _ => None }` when the error value is not needed, `try Ok(f()) catch { e => Err(e) }` to keep it, or `try ... catch ... noraise { ... }` to branch on both outcomes in one expression.
+`try?` (convert to `Result[_, _]`) is **removed** — a parse error (3002) with no hint. Write `try Some(f()) catch { _ => None }` when the error value is not needed, `try Ok(f()) catch { e => Err(e) }` to keep it, or `try ... catch ... noraise { ... }` to branch on both outcomes in one expression.
 
 Never collapse an error into a sentinel value: `catch { _ => "" }` (or `-1`, or an empty array) is as bad as `catch { _ => () }` — it both swallows the failure and injects a fake domain value that downstream code must re-detect with `== ""` checks. Handle the error, propagate it, or — when "no value" is a legitimate outcome — return `T?` so absence is in the type (see "Modeling absence" in `references/types.md`).
 
@@ -131,7 +131,7 @@ pub impl Show for ShareError with output(self, logger) {
 pub extend ShareError with Show::{to_string, output}
 ```
 
-The trailing `pub extend` line is required on moonc ≥ 0.10.13: without it the
+The trailing `pub extend` line is required: without it the
 compiler warns `implicit_impl_as_method` (0079) that `to_string`/`output` are
 being promoted to methods implicitly. Every `#derive(...)` on a non-`priv`
 suberror needs the same treatment (`pub extend E with @debug.Debug::{to_repr}`,

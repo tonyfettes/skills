@@ -119,7 +119,7 @@ fn collect_bench() -> Unit {
     saved = fib(20)
   })
   println(saved)                                       // touch saved so it's not dropped
-  println(@json.to_json(summary).stringify(escape_slash=true, indent=4))  // `summary.to_json()` is deprecated
+  println(@json.to_json(summary).stringify(escape_slash=true, indent=4))
 }
 ```
 

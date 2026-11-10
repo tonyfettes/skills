@@ -11,9 +11,9 @@ profiling) is in `optimization.md`.
 Snapshot tests are preferred — easy to update when behavior changes.
 
 - **Snapshot tests**: write `inspect(value)` / `debug_inspect(value)` / `json_inspect(value)`, then run `moon test --update` (or `-u`) to fill in `content=`.
-  - `inspect()` for values that implement `Show` (primitives, `String`, or types with a manual `impl Show`). Containers — `Option`, `Result`, `Array`, tuples, `Map` — warn `deprecated` ("Use Debug instead of Show for debugging purposes", moonc 0.10.16): `debug_inspect` them
+  - `inspect()` for values that implement `Show` (primitives, `String`, or types with a manual `impl Show`). Containers — `Option`, `Result`, `Array`, tuples, `Map` — go through `debug_inspect`
   - `debug_inspect()` for any type that derives `Debug` — the default for your own data types
-  - `json_inspect()` for complex nested structures (uses `ToJson`, more readable output; the old `@json.inspect` alias is removed in core 0.10.16 — call it without a package prefix)
+  - `json_inspect()` for complex nested structures (uses `ToJson`, more readable output; a prelude function — `@json.inspect` no longer exists)
   - Encouraged to inspect the **whole return value** when it's not huge — makes tests simple. Derive `Debug` and/or `ToJson` (or `impl Show`) on `YourType` accordingly.
 - **Update workflow**: after changing code that affects output, run `moon test --update`, review diffs in test files.
 - **Black-box by default**: call only public APIs via `@package.fn`. Use white-box tests (`*_wbtest.mbt`) only when private members matter. Unqualified calls to the package's own API in a black-box test (`_test.mbt`, doc tests, `.mbt.md`) warn `test_unqualified_package` (0025, on by default) — write `@pkg.sum_array(...)`, not `sum_array(...)`.
@@ -117,7 +117,7 @@ of the module (legacy behavior, warns); prefer explicit `import`.
 
 ## Full-output snapshots with `@test.Test::snapshot`
 
-For tests where you want to capture the **entire output** of a process (codegen, formatter, renderer, parser pretty-printer), use `@test.Test` (the old name `@test.T` no longer resolves — error 4032 on moonc 0.10.16):
+For tests where you want to capture the **entire output** of a process (codegen, formatter, renderer, parser pretty-printer), use `@test.Test` (`@test.T` no longer exists):
 
 ```mbt nocheck
 test "record anything" (t : @test.Test) {
@@ -184,7 +184,7 @@ impl @quickcheck.Arbitrary for Small with fn arbitrary(size, state) {
 
 ///|
 impl @quickcheck.Shrink for Small with fn shrink(self) {
-  shrink_tree(self.0).map(t => Small(t)).iter()   // `Small(_)` partial application is deprecated
+  shrink_tree(self.0).map(t => Small(t)).iter()
 }
 ```
 

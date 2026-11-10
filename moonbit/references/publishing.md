@@ -73,9 +73,7 @@ build/*
 !build/assets/
 ```
 
-The old `options(exclude: [...], "include": [...])` in `moon.mod` still works
-but warns as deprecated — migrate it to ignore files. Always confirm the
-result with `moon package --list`.
+Always confirm the result with `moon package --list`.
 
 ## `scripts.postadd`
 

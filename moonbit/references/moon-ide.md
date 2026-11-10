@@ -2,14 +2,10 @@
 
 `moon ide` subcommands provide semantic navigation, API discovery, and refactoring for MoonBit projects. **Always prefer `moon ide` over manual `grep` / file searching** — the IDE tools understand MoonBit semantics, save tokens, and are more precise (grep picks up comments and unrelated matches).
 
-This file reflects **moon 0.1.20260803** (moonc v0.10.6). Notable changes from
-older toolchains: `moon ide goto-definition` (with its `-tags`/`-query`
-filters) was **removed** — use `peek-def` for exact lookup or
-`workspace-symbols` for fuzzy search; `workspace-symbols` is **new**; `rename`
-gained `--apply`; `hover`/`peek-def`/`find-references`/`workspace-symbols`
-gained `--json`. Rechecked on moon 0.1.20261016: same surface plus the new
-`codelens` subcommand; `hover` accepts `--json` as well as `--output-json`;
-every subcommand also accepts a standalone `.mbtx` file.
+Exact lookup is `peek-def` and fuzzy search is `workspace-symbols`; there is
+no `goto-definition`. `rename` takes `--apply`; `hover`, `peek-def`,
+`find-references` and `workspace-symbols` take `--json`; `codelens` lists code
+lenses. Every subcommand also accepts a standalone `.mbtx` file.
 
 Common flags on every subcommand: `--no-check` (skip the implicit
 `moon check` that refreshes the build graph first) and `--target <backend>`

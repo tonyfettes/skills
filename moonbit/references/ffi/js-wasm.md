@@ -138,11 +138,10 @@ across FFI; convert at the boundary.
 | `String` | `string` | unstable | `externref` iff JS String Builtin on |
 | `Bytes` / `FixedArray[Byte]` | `Uint8Array` | unstable | unstable |
 | `FixedArray[T]` | `T[]` | unstable | unstable |
-| `Array[T]` | deprecated on js — use `FixedArray[T]` | unstable | unstable |
+| `Array[T]` | use `FixedArray[T]` | unstable | unstable |
 
 On js, strings and `FixedArray`s cross the boundary directly — bind
-string-taking JS APIs with MoonBit `String` freely. `Array[T]` in a JS extern
-signature warns `deprecated` ("Use `FixedArray` instead", moonc ≥ 0.10.10). On wasm/wasm-gc, keep strings as host values
+string-taking JS APIs with MoonBit `String` freely. On wasm/wasm-gc, keep strings as host values
 behind `#external` types with host accessor imports, or enable
 `use-js-builtin-string` (wasm-gc + JS host only), or use linear memory (wasm).
 
@@ -222,9 +221,8 @@ options(
 )
 ```
 
-A `link` object with `exports` is enough to emit a library package. The old
-`link: true` (no object) is deprecated — `moon fmt` rewrites it to top-level
-`pkgtype(kind: "foreign_library")`. Output: a standalone `.js` file (js) or
+A `link` object with `exports` is enough to emit a library package. Output:
+a standalone `.js` file (js) or
 `.wasm` module (wasm/wasm-gc).
 
 ## Lifetime
@@ -241,7 +239,7 @@ A `link` object with `exports` is enough to emit a library package. The old
 2. **No polymorphic externs.** Monomorphize by hand (one extern per type).
 3. **Unstable ABI types across wasm FFI.** `String`/`Bytes`/`Array` have no
    stable wasm representation — use `#external` handles or host accessors. Fine
-   on js, except `Array` (deprecated there — pass `FixedArray`).
+   on js, except `Array` (pass `FixedArray`).
 4. **Forgetting `make_closure`.** Instantiating a wasm module that passes
    closures to the host fails with a missing `moonbit:ffi.make_closure` import.
 5. **Dead-code elimination.** Externs and pub functions unreachable from
