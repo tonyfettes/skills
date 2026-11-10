@@ -95,6 +95,7 @@ Load the reference matching your current work BEFORE writing code:
 | Designing or refactoring `Model` types (`Eq` requirement, immutable collections, state enums, spotting hidden state machines, what must never live in a model) | `references/model-design.md` |
 | Writing tests for update handlers (idempotence, dummy object trap, state transitions, test helpers) | `references/testing.md` |
 | Writing or debugging views (positional vs keyed children, focus loss and focusing inserted inputs, view totality, what reruns on a change, components and their `Val` inputs, DOM identity across components, event handlers and render-time capture, model-driven menus, `@html` element surface, void elements, auto-scroll, embedding foreign DOM widgets) | `references/view-rendering.md` |
+| Using `moonbit-community/rui` components (`Html` vs `Val[Html]` APIs, native dialogs via `@dialog.show`, one controlled menu per surface, `@rui.theme` and `--rui-*` tokens, when to copy component source) | `references/rui.md` |
 
 ## Message Design: Namespace by Subsystem
 
@@ -157,6 +158,8 @@ Label every non-obvious `Msg` payload — `AgentProgress(run_id~ : Int, Event)`,
 | `@cmd.custom_cmd` inline in update | Use a built-in package, or move into an FFI package as a named Cmd function |
 | New `extern "js"` written without asking the user | Stop; propose it with the built-ins you checked and wait for approval |
 | Plain-value component parameter that the parent expects to update; a stateful component wrapped around each list row; a component expected to react when only its input changed | See "Components and their inputs" in `references/view-rendering.md` — pass a `Val`, keep one controlled instance per list, forward a `Msg` from the parent |
+| `@rui.context_menu` / `dropdown_menu` wrapped around each row, kept fresh by a hand-written `switch_by(by=revision)` | One controlled rui menu at surface level: the model holds `(target, anchor)`, rows emit target keys, entries resolve from the current model (see `references/rui.md`) |
+| Hand-rolled modal, menu, popover, or focus trap in an app that already depends on rui | Use the rui component; copy its source only when the DOM or interaction model must differ |
 | Relying on `autofocus=true` for an input inserted in response to a click | The clicked control already holds focus, so the browser skips autofocus; return an after-render focus Cmd from the update branch that inserts the input |
 | Handler closure deciding with a render-time `Bool` before emitting (`Emit(key => if valid { ... })`) | Emit unconditionally (`emit.map(key => KeyDown(key))`); update reads current state |
 | `data-*` marker + `MutationObserver` so a component notices its own input changed | Deliver the change through the component's `Input`/`Msg`; state never round-trips through the DOM |
