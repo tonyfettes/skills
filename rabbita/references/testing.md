@@ -102,8 +102,19 @@ constructed directly. `Dispatch` is the deprecated old name.)
   built-in commands such as `ClipboardCopy(Text("hello"))` and batches), but
   that impl is `#internal(experimental)` and a `custom_cmd` closure prints as
   omitted — assert the model, not the command.
-- View functions (need real DOM; the SSR `App::render` is
-  `#cfg(not(target="js"))`, so it is unavailable in js test builds)
+- View functions. There is no `Html` → `String` on js since 0.15.1
+  (`render_to_string` is gone; the SSR `App::render` is
+  `#cfg(not(target="js"))`, async, and wants a full `<html>` document). When a
+  view needs a regression test, move the decision into a pure helper
+  (`row_class(state)`, `summary_line(plan)`) and assert the helper.
+- Stateful components. `create_state` / `create_state_with_input` need the
+  runtime's ambient graph, so they cannot be instantiated in a unit test —
+  test their `Input` projections and `update` instead.
 - Subscriptions (need runtime)
+- Rabbita itself. Assume the diff, keyed relocation, and event wiring are
+  correct; a test that pins DOM node identity, `isConnected`, or the shape of
+  the rendered tree breaks on refactors without any user-visible change.
+  Browser tests assert what the user sees (the text typed before a re-render
+  is still in the box), not how the framework kept it there.
 
 Focus tests on: **model output**, **idempotence**, and **no-throw with dummies**.

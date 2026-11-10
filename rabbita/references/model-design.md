@@ -6,7 +6,7 @@
 input are bounded by `Eq` (0.16). The runtime compares the new model with the
 old one and stops propagation when they are equal, so:
 
-- `derive(Eq)` on the model and every type nested in it.
+- `#derive(Eq)` on the model and every type nested in it.
 - Never mutate a model value in place — an in-place change leaves the old
   snapshot equal to the new one and the view never reruns.
 - A field holding a JS handle (`@js.Value` has no `Eq`) needs a hand-written
@@ -49,16 +49,18 @@ import {
 
 ```moonbit
 // BAD — mutable, update could push/clear in place
+#derive(Eq)
 struct Model {
   servers : Array[ServerEntry]
   threads : Array[Thread]
-} derive(Eq)
+}
 
 // GOOD — immutable persistent vector
+#derive(Eq)
 struct Model {
   servers : @vector.Vector[ServerEntry]
   threads : @vector.Vector[Thread]
-} derive(Eq)
+}
 ```
 
 Use `@vector.Vector::push`, `set`, `filter`, `map`, etc. — they return a new Vector. The old model snapshot is never mutated.

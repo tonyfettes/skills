@@ -20,7 +20,7 @@ Adding any **new** `extern "js"` body requires the user's explicit approval firs
 
 ## Anti-patterns with built-in commands
 
-- **Relative `@http` URLs under client-side routes.** Since 0.16.5 a URL without `://` is string-joined onto `document.baseURI` (0.16.2 used the origin). The base URI is the full page URL unless a `<base href>` is set, and there is no root-relative resolution yet (upstream issue #221): `@http.get("/api/user")` on route `/users/42` requests `/users/42/api/user`. Set `<base href="/">` (or the app's deploy path) in the HTML shell, or pass absolute URLs.
+- **Relative `@http` URLs under client-side routes.** A URL without `://` is resolved by Rabbita, not the browser: on 0.16.7+ a root-relative URL (`"/api/user"`) is joined onto the origin, and any other relative URL (`"api/user"`) onto `document.baseURI` — the full page URL unless a `<base href>` is set, so on route `/users/42` it requests `/users/42/api/user`. Write API paths root-relative. On 0.16.5 *every* relative URL was joined onto the base URI (root-relative included); there, set `<base href="/">` in the HTML shell or pass absolute URLs.
 - **Ignoring the returned `Cmd`/`Request`**: `@http.get("api/user") |> ignore` does nothing. Return the Cmd from update.
 - **Storing a `Request` or `Cmd`** in a global, the Model, or any data structure. Construct commands fresh in update.
 - **Embedding logic in the emit callback**: `expect_empty(r => emit(Status(r.is_none())))` hides a decision in a closure. Carry the raw payload (`emit.map(r => Deleted(r))`) and decide in update.

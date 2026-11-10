@@ -5,13 +5,19 @@ description: Use when writing or modifying update functions or views in Rabbita 
 
 # Rabbita
 
-Baseline: **Rabbita 0.16.5** (2026-10-12; validated on moonc v0.10.16). Check the
-project's `moon.mod` pin; older pins may still carry the deprecated shapes listed
-below. Behavior changes since 0.16.2: relative `@http` URLs resolve against
-`document.baseURI` instead of the origin (0.16.5, see `references/ffi-packages.md`);
-`read_only~` and other camelCase boolean props actually apply (0.16.4); requires
-`moonbitlang/async` 0.22 (0.16.3); a hand-written `@cmd.Context` impl renames
-`get_origin` → `get_base_uri` (0.16.5).
+Baseline: **Rabbita 0.17.0** (checked against the published package source,
+2026-11-10; moonc v0.10.20). Check the project's `moon.mod` pin; older pins may
+still carry the deprecated shapes listed below. A `moon.work` workspace resolves
+one Rabbita version for every member — per-module pins are not a thing. Changes
+since 0.16.5: `auto_complete?` / `Attrs::autocomplete` take a `String` token
+list (`"off"`, `"current-password"`, ...) — the `AutoComplete` enum is gone
+(0.17.0); `Attrs::attribute(key, value)` is public as a raw-attribute escape
+hatch, unsanitized (0.17.0); root-relative `@http` URLs (`"/api/x"`) resolve
+against the origin again, other relative URLs against `document.baseURI`
+(0.16.7); `@dom` gained media track lists and `TimeRanges` (0.16.7). Earlier:
+`read_only~` and other camelCase boolean props actually apply (0.16.4);
+requires `moonbitlang/async` 0.22 (0.16.3); a hand-written `@cmd.Context` impl
+renames `get_origin` → `get_base_uri` (0.16.5).
 
 A Rabbita app is a tree of **components**: ordinary functions returning
 `Val[Html]` that run once at mount to build an incremental graph. Inside a
@@ -27,6 +33,14 @@ Each returns `(Val[Model], Emit[Msg])`. For a single-state app,
 `@rabbita.elmish(model~, view~, update~, subscriptions?)` wraps `create_state` +
 `new` and returns the `App`. **`Model` must implement `Eq`**: an
 equal result stops propagation, so derive `Eq` and keep the model immutable.
+
+**A component body runs exactly once, at mount.** A plain-value parameter is
+frozen into its closures forever, so every external fact that can change must
+arrive as a `Val[T]`. And a `Val` input is a value read while a callback runs,
+not a signal: an input change alone re-renders the view but sends no message,
+runs no `update`, and refreshes no subscription. Effects are driven by `Msg`
+only — see "Components and their inputs" in `references/view-rendering.md`
+before deciding where a piece of state lives.
 
 **`update` must be a pure function.** It returns a new model and commands
 describing side effects — it never executes side effects directly. This purity
@@ -84,7 +98,7 @@ Load the reference matching your current work BEFORE writing code:
 | Using built-in effect packages, or binding a new JS library (dummy constructors, private externs, Cmd-returning API, wiring JS events back into the update loop via `Emit`, live DOM collection snapshotting, command constructor reference, package checklist) | `references/ffi-packages.md` |
 | Designing or refactoring `Model` types (`Eq` requirement, immutable collections, state enums, spotting hidden state machines, what must never live in a model) | `references/model-design.md` |
 | Writing tests for update handlers (idempotence, dummy object trap, state transitions, test helpers) | `references/testing.md` |
-| Writing or debugging views (positional vs keyed children, focus loss, view totality, what reruns on a change, `@html` element surface, void elements, auto-scroll, embedding foreign DOM widgets) | `references/view-rendering.md` |
+| Writing or debugging views (positional vs keyed children, focus loss and focusing inserted inputs, view totality, what reruns on a change, components and their `Val` inputs, DOM identity across components, event handlers and render-time capture, model-driven menus, `@html` element surface, void elements, auto-scroll, embedding foreign DOM widgets) | `references/view-rendering.md` |
 
 ## Message Design: Namespace by Subsystem
 
@@ -121,7 +135,10 @@ Label every non-obvious `Msg` payload — `AgentProgress(run_id~ : Int, Event)`,
 4. Void elements (`hr`, `br`, `img`, `input`) take **zero** children — no trailing `@html.nothing`.
 5. `on_click` exists only on `div`, `button`, `li`, `ul` (not `a`/`span`); check the `.mbti`. Clickable text is a styled `button`. Since `on_click` takes an erased `Cmd`, subpackages accept `(payload) -> Cmd` callbacks instead of importing the root `Msg`.
 6. `on_click` does **not** stop propagation — a clickable nested inside a clickable ancestor fires both handlers. Use the `@html.Attrs` event lambda with `event.stop_propagation()` (a legitimate escape-hatch use) or restructure to avoid nesting.
-7. SSR/native builds: gate DOM-backed code behind `#cfg(target="js")` with inert native stubs; `@rabbita.perform` / `attempt` / `effect` are `#cfg(target="js")` — packages using them must declare js-only targets (`delay`, `batch`, `custom_cmd` compile on every target).
+7. Event handlers **emit unconditionally**; the guard lives in update. A closure that branches on a value captured at render time (`if valid { emit(Submit) }`) sees the last painted frame, so type-then-Enter inside one frame does nothing.
+8. Component identity is DOM identity only when the container is keyed: a positional slot holding the same tag is patched in place across two different components. Key the container, and resolve DOM nodes after render, never inside a subscription loader.
+9. A menu whose visibility follows the model is `position: fixed` + CSS anchor positioning inside a size container, not the top layer (`popover`). Reserve the top layer for click-opened menus whose toggle itself calls `show()`.
+10. SSR/native builds: gate DOM-backed code behind `#cfg(target="js")` with inert native stubs; `@rabbita.perform` / `attempt` / `effect` are `#cfg(target="js")` — packages using them must declare js-only targets (`delay`, `batch`, `custom_cmd` compile on every target).
 
 ## Common Mistakes
 
@@ -136,13 +153,18 @@ Label every non-obvious `Msg` payload — `AgentProgress(run_id~ : Int, Event)`,
 | Business logic inside emit callbacks (`emit.map(s => Msg(s.has_prefix("x")))`) | Carry the raw payload in the Msg; decide in update |
 | `Option` + `Bool` for lifecycle state | Replace with enum |
 | Mutable `Array[T]` / `Map` mutated in place in model | Use `@immut/*` (e.g. `@vector.Vector[T]`); never mutate a model collection in place — `Eq` cannot see in-place changes |
-| `struct Model` without `Eq` passed to `create_state` | `derive(Eq)`; for FFI-handle fields write `impl Eq` by identity/generation (see `references/model-design.md`) |
+| `struct Model` without `Eq` passed to `create_state` | `#derive(Eq)`; for FFI-handle fields write `impl Eq` by identity/generation (see `references/model-design.md`) |
 | FFI type without `dummy()` | Add `pub fn T::dummy() -> T` using `@js.Object::new().to_value()` |
 | New message handler without purity test | Add idempotence + dummy trap tests |
 | `Dispatch`, `cell`/`simple_cell`/`static_cell`, `App::with_init`, `@cmd.raw_effect` in new code | `Emit`, a component with `create_state`/`create_pure_state`/`Val::constant`, `create_state_with_init`, `@cmd.custom_cmd` |
 | `update` written as `(emit, msg, model) -> (cmd, model)` | `(model, msg, emit) -> (model, cmd)` — the 0.16 `create_state` shape |
 | `@cmd.custom_cmd` inline in update | Use a built-in package, or move into an FFI package as a named Cmd function |
 | New `extern "js"` written without asking the user | Stop; propose it with the built-ins you checked and wait for approval |
+| Passing a plain value into a component and expecting it to update | Pass a `Val[T]`; the component body ran once and froze the plain value |
+| Wrapping each dynamic row in a stateful component (a per-row context menu, dropdown) | The wrapper freezes its children; a hand-written `switch_by(by=revision)` cache then goes stale on the field the revision forgot. Keep ONE controlled instance at list level (open target + anchor in its state); rows only dispatch stable target keys |
+| Expecting a component to react when only its input changed ("the page was opened") | Keep that state in the parent model and forward one `Msg`, or mount the component per occurrence with `switch_by` (only when no in-flight work must survive unmount) |
+| Relying on `autofocus=true` for an input inserted in response to a click | The clicked control already holds focus, so the browser skips autofocus; return an after-render focus Cmd from the update branch that inserts the input |
+| Handler closure deciding with a render-time `Bool` before emitting (`Emit(key => if valid { ... })`) | Emit unconditionally (`emit.map(key => KeyDown(key))`); update reads current state |
 | `data-*` marker + `MutationObserver` so a component notices its own input changed | Deliver the change through the component's `Input`/`Msg`; state never round-trips through the DOM |
 | Raw `document.addEventListener` for keys/clicks in a sub loader | `@sub.on_key_down` / `on_key_up` / `on_mouse_move`, or element `on_mousedown=` (there is no global mouse-down sub); keep the match-and-decide logic in update |
 | Trailing `@html.nothing` on `hr`/`br`/`img`/`input` | Void elements take zero children |
@@ -170,4 +192,8 @@ Label every non-obvious `Msg` payload — `AgentProgress(run_id~ : Int, Event)`,
 - Conditional sibling rendered before a focus-holding element in an `Array` child list (index shift = focus loss); a dynamic list rendered as `Array[Html]` instead of keyed `Map[String, Html]`
 - A raise-capable call inside `view` without a catch-and-fallback at the boundary
 - Deprecated names (`Dispatch`, `cell` family, `with_init`, `raw_effect`) in new code
+- A component constructor taking plain `String`/`Bool`/record parameters that the parent recomputes on every render
+- A stateful component instantiated per list row around row content
+- A subscription loader that calls `get_element_by_id` (or any DOM lookup) synchronously
+- A unit or e2e test asserting Rabbita's own behavior: DOM node identity, `isConnected`, diff output
 - A loop that mutates the DOM children it is iterating (`get_children()` / any live-collection binding + `remove_child`/`append_child` in the body)
