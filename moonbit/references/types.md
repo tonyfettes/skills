@@ -365,22 +365,24 @@ Litmus test: **if any downstream code branches on `== ""` / `.is_empty()` /
 `== -1` to decide "present or not", the type should have been `T?`** (or the
 producer should have raised).
 
+The example uses `moonbitlang/core/async/process` (see `references/async.md`).
+
 ```mbt
 // BAD: failure and absence collapse into "" — the caller cannot tell
 // "command failed" from "output was empty", and the error is swallowed.
 async fn git_output(dir : String, args : Array[String]) -> String {
-  let (code, stdout, _) = @process.collect_output("git", args, cwd=dir) catch {
+  let result = @process.run("git", args, cwd=dir, stdout=Collect) catch {
     _ => return ""
   }
-  guard code == 0 else { return "" }
-  stdout.text().trim().to_owned()
+  guard result.exit_code == 0 else { return "" }
+  result.stdout_text().trim().to_owned()
 }
 
 // GOOD: absence is in the type; callers decide what a missing value means.
 async fn git_output(dir : String, args : Array[String]) -> String? {
-  let (code, stdout, _) = @process.collect_output("git", args, cwd=dir)
-  guard code == 0 else { return None }
-  Some(stdout.text().trim().to_owned())
+  let result = @process.run("git", args, cwd=dir, stdout=Collect)
+  guard result.exit_code == 0 else { return None }
+  Some(result.stdout_text().trim().to_owned())
 }
 ```
 

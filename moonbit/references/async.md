@@ -15,8 +15,10 @@ before writing a call — the names differ. See "Migrating to
 ## Runtime and setup
 
 Asynchronous programming uses compiler support plus the `moonbitlang/async`
-runtime. Prefer the native backend for async IO; WebAssembly support is not
-available for async IO-oriented packages.
+runtime. Both libraries fully support native and `wasm` (Wasm1) on
+Linux/macOS/Windows, with a browser-compatible subset (HTTP client) on `js`
+and nothing on `wasm-gc`. Prefer native for async IO; some packages are
+native-only (`raw_fd`, and the bundled examples).
 
 Discover the API before coding: after `moon add moonbitlang/async@<version>`,
 explore it with `moon ide doc "@async"` (and subpackages like
@@ -29,7 +31,7 @@ timers, cancellation), `@async/aqueue`, `@async/fs`, `@async/stdio`,
 1. Add the dependency and pin the native target in `moon.mod`:
    ```
    import {
-     "moonbitlang/async@0.22.5",
+     "moonbitlang/async@0.22.9",
    }
 
    options(
@@ -144,7 +146,7 @@ body, where the loop would otherwise keep retrying while the task is being
 cancelled. To react to cancellation itself, use
 `@async.handle_cancellation(f)` (returns `None` when `f` was cancelled; the
 task stays cancelled). `with_cancellation_handler` is deprecated in its favor
-(async 0.22.5).
+(async 0.22.5+).
 
 ### `nocancel` functions
 
@@ -221,7 +223,7 @@ passes; `with_timeout_opt` returns `None` instead. When a timeout is a failure
 of the operation, use the raising form so it flows through the same `catch`
 as every other transport error rather than becoming a second branch.
 
-## Small API notes (async 0.22.5)
+## Small API notes (async 0.22.9)
 
 - `@async.platform` (`Linux | MacOS | Windows`) replaces the third-party
   `tonyfettes/platform` package for OS checks: `if @async.platform is Windows`.
@@ -229,6 +231,9 @@ as every other transport error rather than becoming a second branch.
   the old `create=0o644` argument no longer exists; pass
   `create_mode=CreateOrTruncate` (or `OpenExisting`, `TruncateExisting`,
   `OpenOrCreate`, `CreateNew`) and `permission=0o644`.
+- Passing a `@pipe.PipeRead` / `PipeWrite` straight to `stdin=` / `stdout=` is
+  deprecated; create the channel with `@process.write_to_process()` /
+  `read_from_process()` or `@process.pipe()`.
 - `@socket.TcpServer(addr, reuse_port_lb=true)` sets `SO_REUSEPORT` so several
   worker processes can bind one address with kernel load balancing — Linux
   only; ignored on macOS/BSD/Windows.
