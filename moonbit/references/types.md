@@ -317,7 +317,7 @@ pub type UserId = Int                       // Int is aliased to UserId (symlink
 
 ### Derivable traits
 
-Most types can auto-derive standard traits with `derive(...)`:
+Most types can auto-derive standard traits with a `#derive(...)` attribute line above the declaration (postfix `} derive(...)` is deprecated):
 
 | Trait | Enables |
 |---|---|
@@ -331,16 +331,18 @@ Most types can auto-derive standard traits with `derive(...)`:
 
 ```mbt check
 ///|
+#derive(Debug, Eq, ToJson)
 priv struct Coordinate {
   x : Int
   y : Int
-} derive(Debug, Eq, ToJson)
+}
 
 ///|
+#derive(Debug, Eq, Compare)
 priv enum Status {
   Active
   Inactive
-} derive(Debug, Eq, Compare)
+}
 ```
 
 **Best practice**: always derive `Debug` and `Eq` for data types; add `ToJson` if you test them with `json_inspect()`. Reserve `Show` for genuine display formats via a manual `impl`.

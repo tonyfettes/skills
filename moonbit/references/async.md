@@ -1,9 +1,16 @@
-# MoonBit Async (`moonbitlang/async`)
+# MoonBit Async (`moonbitlang/async`, `moonbitlang/core/async`)
 
 Runtime setup, structured concurrency, async tests, cancellation-safe cleanup,
 and pipeline backpressure. Language-level basics live elsewhere: the `async`
 prefix / no-`await` rule and implicit raising in `language.md` and `errors.md`;
 `defer` itself in `control-flow.md`.
+
+There are two libraries with the same design. `moonbitlang/async` is the
+registry package this file mostly describes. `moonbitlang/core/async` is its
+successor inside the standard library (experimental; the old library's README
+says it will be replaced). Check which one the package's `moon.pkg` imports
+before writing a call — the names differ. See "Migrating to
+`moonbitlang/core/async`" at the end.
 
 ## Runtime and setup
 
@@ -156,7 +163,9 @@ Cancellation is delivered as a signal at suspension points. It runs
 so cleanup that must run on cancellation cannot live in a `catch` arm. Put it
 in `defer`/`errdefer`, `TaskGroup::add_defer`, or react with
 `@async.handle_cancellation`. Any **async operation inside the cleanup** is
-itself cancelled immediately while the task is being cancelled.
+itself cancelled immediately while the task is being cancelled; the compiler
+flags such a `defer`/`errdefer` with `cancellable_defer` (0098) — protect the
+must-complete part, or move best-effort cleanup into a `nocancel` call.
 Must-complete async cleanup (terminal-state restore, external-resource
 release) needs `@async.protect_from_cancel`. `TaskGroup::add_defer` takes an
 `async () -> Unit nocancel` callback, so cancellable work in it must be wrapped
@@ -167,6 +176,23 @@ otherwise:
 defer @async.protect_from_cancel(() => restore_terminal())   // must-complete
 group.add_defer(() => @fs.remove(tmp) catch { _ => () })        // nocancel already
 ```
+
+Fixing `cancellable_defer`, in order of preference:
+
+1. **Put `nocancel` on the cleanup function's signature** when its body is
+   already sync code plus `protect_from_cancel` sections:
+   `async fn Program::close(self) -> Unit nocancel { ... }`. The guarantee then
+   lives on the function, the compiler checks the body (a later cancellable
+   call before the protected part is error 4227), and every
+   `defer program.close()` is warning-free without a wrapper.
+2. Wrap the call: `defer @async.protect_from_cancel(() => cleanup())`.
+3. Never silence it with `#warnings("-cancellable_defer")`.
+
+Before protecting a cleanup, check what it waits on. A protected cleanup that
+depends on another task in the same cancelled group (a queue served by a
+worker, an actor) deadlocks: the worker is cancelled, so the shielded wait
+never settles. Restructure so that cleanup runs after the task group has
+joined, where the workers have already stopped.
 
 Refinements from production review:
 
@@ -254,3 +280,71 @@ queue silently removes socket backpressure and can OOM the process. Forced
 shutdown must clear both queues (stale frames leak across reconnects), and
 verify loop tasks actually park/exit after their channel closes — don't assume
 `exit` alone stops a busy loop.
+
+## Migrating to `moonbitlang/core/async`
+
+Verified on moonc 0.10.20 against `${MOON_HOME}/lib/core/async` and
+`moonbitlang/async` 0.22.7–0.22.9. Read the `pkg.generated.mbti` files there
+for anything not listed; the API is still marked experimental.
+
+**Setup.** No `moon.mod` dependency — the packages are part of core. Import
+`moonbitlang/core/async` and the subpackages you use (`.../fs`, `.../process`,
+`.../http`, `.../stdio`, `.../io`, `.../socket`, `.../os_error`, ...), and
+acknowledge each one or every check prints an "experimental package" warning:
+
+```
+import {
+  "moonbitlang/core/async",
+  "moonbitlang/core/async/fs",
+}
+
+options(
+  "allow-experimental-packages": [
+    "moonbitlang/core/async",
+    "moonbitlang/core/async/fs",
+  ],
+)
+```
+
+Backends: native and `wasm` are fully supported, `js` has a browser subset
+(HTTP client), `wasm-gc` has none.
+
+**Mixing the two libraries.** From `moonbitlang/async` 0.22.7 the old library
+runs on core's scheduler, so one program can use both and packages can move
+one at a time. The types stay distinct, though: `TaskGroup`, `@fs.File`,
+`@io.Reader`, and the OS error type of one library are not those of the
+other. Migrate a package that exposes such a type together with its callers.
+
+| `moonbitlang/async` | `moonbitlang/core/async` |
+|---|---|
+| `with_task_group(async (TaskGroup[X]) -> X) -> X` | `with_task_group(async (TaskGroup) -> Unit) -> Unit`; `TaskGroup` is not generic |
+| `@fs.read_file(p).text()` / `.binary()` | `@fs.read_text(p)` / `@fs.read_binary(p)` |
+| `@fs.write_file(p, data, ...)` | `@fs.write_text(p, text, ...)` / `@fs.write_binary(p, bytes, ...)` |
+| `@os_error.OSError(_) as e if e.is_ENOENT()` | `@os_error.OsError(NotFound, ..)`; kinds `NotFound`, `AlreadyExists`, `AccessDenied`, ... (`#non_exhaustive`) |
+| `@process.collect_output(...)`, `collect_stdout`, `collect_output_merged` | `@process.run(prog, args, stdout=Collect)` then `result.stdout_text()` / `stdout_binary()` / `exit_code`; merged output is `stderr=DuplicateStdout` |
+| `stdin=reader`, `stdout=writer` (pipe ends passed directly) | `stdin=Shared(reader)`, `stdout=Shared(writer)`; closed stdin is `stdin=Empty` |
+| `@http.get(url)` → `(Response, body)` | `@http.get_text` / `get_binary` / `get_json(url)` → `(ResponseHeader, body)` |
+| `@http.post(url, body, headers=)` | `@http.post_text` / `post_binary` / `post_json(url, body, headers=)`; plain `@http.post(url)` returns a `ClientConnection` to stream into |
+| `@http.get_stream(url)` | `@http.get(url)` → `(ResponseHeader, ClientConnection)` |
+| server handler `(request, body, conn) => ...`, `body.read_all()` | `(request, conn) => ...`, `conn.read_all()` |
+| `@stdio.stdout.write("text")`, `@stdio.stdin.read_all().text()` | `@stdio.stdout.text.write("text")`, `@stdio.stdin.text.read_all()` — `write` / `read_all` on the handle itself are binary (`BytesView` / `Bytes`) |
+| `server.addr()` | `server.addr` (field) |
+
+Gotchas that compile and then misbehave:
+
+- **Getting a value out of a task group.** Do not write
+  `let mut r = None` inside and `r.unwrap()` after. Hoist the state the tasks
+  build into outer locals and compute the result after the group returns; an
+  early exit records a value (`failure : E?`) instead of returning from the
+  group body.
+- **`Shared(x)` pipe ends are caller-owned.** The old library closed the
+  child's end of `read_from_process()` / `write_to_process()` after spawn.
+  With core, close it yourself right after `spawn` (and on spawn failure) —
+  otherwise the reader never sees EOF and hangs.
+- **Error types change under existing catches.** A migrated package raises
+  core `OsError`; a caller still matching the old `@os_error.OSError` keeps
+  compiling and silently stops matching. Before migrating a package, search
+  its dependents (tests included) for old-library error patterns. Core errors
+  also display without the `OSError("...")` wrapper, so snapshot text changes.
+- `@fs.remove` and `@fs.rmdir` take `allow_missing?` and are `nocancel`, which
+  replaces most "catch ENOENT around cleanup" code.

@@ -49,7 +49,7 @@ test "spread in literals" {
   let a : Array[Int] = [..a1, ..a2, 6]
   debug_inspect(a, content="[1, 2, 3, 4, 5, 6]")
   let hello : String = "Hello"
-  let s : String = [..hello, ' ', ..("World".view()), '!']
+  let s : String = [..hello, ' ', .."World"[:], '!']
   inspect(s, content="Hello World!")
   let b : Bytes = [..b"hi", ..b"hi"[0:1], 10]
   debug_inspect(b, content="<Bytes: [0x68, 0x69, 0x68, 0x0a]>")

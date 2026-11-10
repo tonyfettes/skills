@@ -315,9 +315,10 @@ impl Add for Vector with add(self, other) {   // a `pub impl` would also need `p
 }
 
 ///|
+#derive(Eq)
 priv struct Person {
   age : Int
-} derive(Eq)
+}
 
 ///|
 impl Compare for Person with compare(self, other) {
@@ -352,10 +353,11 @@ Index-shaped operators (`x[k]`, `x[k] = v`, `x[a:b]`) are overloaded by methods 
 | `#alias("_[_:_]")` | `(Self, start? : Index, end? : Index) -> Result` | `self[start:end]` |
 
 ```mbt nocheck
+#derive(Debug)
 struct Coord {
   mut x : Int
   mut y : Int
-} derive(Debug)
+}
 
 #alias("_[_]")
 fn Coord::get(self : Self, key : String) -> Int {

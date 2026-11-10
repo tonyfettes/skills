@@ -9,7 +9,7 @@ MoonBit uses checked error-throwing, not unchecked exceptions. All errors are su
 - `expr catch { ... }` or `try { } catch { } [noraise { }]` — handle explicitly.
 - `try! expr` — abort if it raises.
 
-Do not use the legacy `function_name!(...)` / `function_name(...)?` syntax for new code. (`try?`, which converts to `Result[_, _]`, is being deprecated — prefer `try ... catch ... noraise` instead.)
+Do not use the legacy `function_name!(...)` / `function_name(...)?` syntax for new code. `try?` (convert to `Result[_, _]`) is **removed** — a parse error (3002) on moonc 0.10.20. Write `try Some(f()) catch { _ => None }` when the error value is not needed, `try Ok(f()) catch { e => Err(e) }` to keep it, or `try ... catch ... noraise { ... }` to branch on both outcomes in one expression.
 
 Never collapse an error into a sentinel value: `catch { _ => "" }` (or `-1`, or an empty array) is as bad as `catch { _ => () }` — it both swallows the failure and injects a fake domain value that downstream code must re-detect with `== ""` checks. Handle the error, propagate it, or — when "no value" is a legitimate outcome — return `T?` so absence is in the type (see "Modeling absence" in `references/types.md`).
 
@@ -77,7 +77,7 @@ fn handle_parse(s : String, position~ : Position) -> Int {
 
 ///|
 test "convert to a value" {
-  // replaces the deprecated `try?`; keep `Result` as local data — a function
+  // replaces the removed `try?`; keep `Result` as local data — a function
   // returning `Result[T, SomeError]` warns `result_error_return` (0078):
   // declare `-> T raise E` instead
   let r : Result[Int, ParseError] = try parse_int("", position=Position(0, 0)) catch {
@@ -133,7 +133,7 @@ pub extend ShareError with Show::{to_string, output}
 
 The trailing `pub extend` line is required on moonc ≥ 0.10.13: without it the
 compiler warns `implicit_impl_as_method` (0079) that `to_string`/`output` are
-being promoted to methods implicitly. Every `derive(...)` on a non-`priv`
+being promoted to methods implicitly. Every `#derive(...)` on a non-`priv`
 suberror needs the same treatment (`pub extend E with @debug.Debug::{to_repr}`,
 or `#deprecated pub extend ...` to retire the method — see `derive.md`), so
 derive only what something actually uses.
@@ -234,3 +234,37 @@ try body.json() catch {
   _ => Failed(message=invalid)
 }
 ```
+
+## Let errors propagate — don't catch to re-wrap
+
+A `catch` arm that only converts one error into another is usually noise:
+
+```mbt nocheck
+// BAD — a new variant nobody matches, plus a prefix the inner error already has
+let toolchain = @moonbit.resolve_toolchain() catch {
+  @moonbit.ToolchainUnavailable(_) as e => raise ToolchainUnavailable("\{e}")
+  e => raise ToolchainUnavailable("could not resolve a MoonBit toolchain: \{e}")
+}
+
+// GOOD — the function is already `raise`; the original error reaches the caller
+let toolchain = @moonbit.resolve_toolchain()
+```
+
+Before adding a wrapping arm, check who consumes the result: if every caller
+only renders the `Show` text (a log line, a JSON-RPC `message`), wrapping buys
+nothing and often stacks prefixes ("failed to index workspace: failed to read
+Git ignore rules: ..."). Wrap only when a caller branches on the new variant,
+and then delete the variant again once nothing matches it.
+
+The same test applies to the error type itself. A package-owned
+`suberror SearchError { SearchError(String) }` is a string bag: tests can only
+assert "something failed", and internal actors pass pre-formatted strings
+around. Give it one variant per cause the package can name
+(`EmptyCacheKey`, `CacheRootMismatch`, `IndexFailed(String)`), keep `Show`
+producing the user-facing text, and let tests match the variant. A cause that
+is an internal invariant rather than a user error does not need its own
+variant.
+
+Catch-all arms in tests hide the same problem: an expected-failure test ending
+in `_ => ()` passes on any failure. Match the specific variant, or let the test
+raise.

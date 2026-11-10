@@ -43,7 +43,7 @@ wit-bindgen moonbit wit/world.wit --out-dir . \
 
 | Flag | Effect |
 |---|---|
-| `--derive-eq` / `--derive-show` | add `derive(Eq)` / `derive(Show)` to all generated types |
+| `--derive-eq` / `--derive-show` | add `Eq` / `Show` derives to all generated types |
 | `--derive-error` | WIT variants/enums with "Error" in the name become MoonBit `suberror`s, so `raise`/`catch` integrate naturally |
 | `--ignore-stub` | regenerate bindings after a WIT change WITHOUT touching your `stub.mbt` implementations |
 | `--project-name <name>` | override the module name (useful when embedding into a larger project) |
@@ -56,9 +56,11 @@ implement your logic in `gen/interface/<pkg-path>/stub.mbt` (bodies are the
 `world/` (top level) holds import bindings; `ffi/` is low-level glue. Newer
 wit-bindgen may emit `moon.pkg` instead of `moon.pkg.json`. Current moon
 (0.1.20261016) rejects the legacy JSON files for ordinary commands — run
-`moon fmt` once to migrate them to `moon.mod` / `moon.pkg`. `--derive-show`
-emits `derive(Show)`, which current compilers flag as deprecated for
-debugging output; prefer `derive(Debug)` in hand-written code.
+`moon fmt` once to migrate them to `moon.mod` / `moon.pkg`. Older wit-bindgen
+emits postfix `} derive(...)`, which moonc ≥ 0.10.19 flags as deprecated —
+the same `moon fmt` pass rewrites it to `#derive(...)`. `--derive-show`
+emits a `Show` derive, which current compilers flag as deprecated for
+debugging output; prefer `#derive(Debug)` in hand-written code.
 
 ## 3. Implement, build, componentize
 

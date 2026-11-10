@@ -165,7 +165,7 @@ test a generator or shrinker.
 
 ### Custom generators: wrap the type, don't derive on it
 
-`derive(@quickcheck.Arbitrary, @quickcheck.Shrink)` works, but must sit on the
+`#derive(@quickcheck.Arbitrary, @quickcheck.Shrink)` works, but must sit on the
 type definition — deriving on a production type makes its package depend on
 `quickcheck` outside tests, and gives you the default distribution. For
 domain types (ASTs, anything with invariants), wrap them in a test-local
@@ -173,7 +173,8 @@ newtype and implement both traits there:
 
 ```mbt nocheck
 ///|
-priv struct Small(Tree) derive(Debug)
+#derive(Debug)
+priv struct Small(Tree)
 
 ///|
 impl @quickcheck.Arbitrary for Small with fn arbitrary(size, state) {

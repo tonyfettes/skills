@@ -301,6 +301,19 @@ readability checks across the touched file, not just the exact commented line:
   parsing its `Failure` text. Reserve `fail` for assertions, impossible states,
   quick tests, or errors that are intentionally not part of a typed handling
   path.
+- Do not catch an error only to re-raise it under another type or with a
+  prefix; let it propagate unless a caller matches the new variant (see "Let
+  errors propagate" in `errors.md`).
+- Name package members without the package name: `@terminal.open`, not
+  `@terminal.terminal_open`. Name a package after what it owns, not after an
+  action or a file it happened to hold.
+- A comment earns its place only for a constraint the code cannot show. Do not
+  restate in a doc comment the rationale that already lives in the PR or the
+  design doc, and do not add a test whose only job is to prove a refactor to
+  the reviewer.
+- When two checks inspect the same pair of values, match the tuple once
+  (`match (value, state) { (Some(v), None) => ... }`) instead of repeating
+  `if a is None` / `if b is Some(_)` in sequence.
 - In state-machine or index-arithmetic logic, add a short local comment for
   non-obvious boundary handling. Use compact ASCII diagrams when positions or
   offsets are hard to see from code.

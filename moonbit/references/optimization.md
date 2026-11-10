@@ -199,7 +199,7 @@ gone for the common path.
 
 ## Pitfall 2 — `!=` / `==` on a derived-`Eq` enum becomes a polymorphic call
 
-For a simple (payload-free) enum with `derive(Eq)`, this on a hot path:
+For a simple (payload-free) enum with `#derive(Eq)`, this on a hot path:
 ```moonbit
 if x.kind() != SomeVariant { ... }
 ```

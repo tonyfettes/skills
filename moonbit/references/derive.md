@@ -1,9 +1,10 @@
-# `derive(...)` Reference
+# `#derive(...)` Reference
 
 Configuring auto-derived traits. For the bare list of derivable traits, see `types.md`. This file covers the configuration arguments — especially for `FromJson` / `ToJson`, where the defaults often aren't what you want.
 
 ## Quick rules
 
+- Write derives as an attribute line directly above the declaration (after any `///|` / doc comment): `#derive(Debug, Eq)` then `pub struct T { ... }`. The old postfix form `} derive(...)` warns `deprecated_syntax` (0027) since moonc 0.10.19; `moon fmt` rewrites it to the attribute form.
 - A trait `T` can be derived only if every field used in the type already implements `T`.
 - Always derive `Debug` and `Eq` on data types; add `ToJson` if you `json_inspect` them in tests. Deriving `Show` for debugging is deprecated — reserve `Show` for genuine display formats via a manual `impl Show for T with output(...)`.
 - For `FromJson` / `ToJson` arguments more advanced than `style`, `rename_fields`, and per-field `rename`, **manually implement the trait** — many older args (`repr`, `case_repr`, `default`, `rename_all`) have been deprecated.
@@ -18,10 +19,11 @@ same in its `extends.mbt` files). Say explicitly which methods stay:
 
 ```mbt check
 ///|
+#derive(Debug, Eq, ToJson)
 pub(all) enum Level {
   Low
   High
-} derive(Debug, Eq, ToJson)
+}
 
 ///|
 pub extend Level with ToJson::{to_json} // keep `level.to_json()`
@@ -44,7 +46,7 @@ pub extend Level with @debug.Debug::{to_repr} // `debug_inspect` / `Repr(x)` sti
   `Compare::{compare, op_lt, op_le, op_gt, op_ge}`, `Hash::{hash, hash_combine}`,
   `Default::{default}`, `Show::{output, to_string}`, `FromJson::{from_json}`
   (`@json.FromJson` outside the json package). Naming `@debug.Debug` in an
-  `extend` line needs `moonbitlang/core/debug` imported; `derive(Debug)` alone
+  `extend` line needs `moonbitlang/core/debug` imported; `#derive(Debug)` alone
   does not.
 
 ## Derivable traits
@@ -57,9 +59,9 @@ pub extend Level with @debug.Debug::{to_repr} // `debug_inspect` / `Repr(x)` sti
 | `Compare` | `<`, `>`, `<=`, `>=` (orders enums by definition order) |
 | `Default` | `Default::default()` (`T::default()` needs `pub extend T with Default::{default}`) |
 | `Hash` | `Map` / `HashSet` keys |
-| `Arbitrary` | property testing (`@quickcheck`); write as `derive(@quickcheck.Arbitrary)` |
-| `Shrink` | counterexample shrinking (`derive(@quickcheck.Shrink)`) — in-place field shrinking only, see `testing.md` "Property tests" |
-| `ToJson` | `json_inspect`, `@json.to_json(x)` (`x.to_json()` needs an `extend` line) |
+| `Arbitrary` | property testing (`@quickcheck`); write as `#derive(@quickcheck.Arbitrary)` |
+| `Shrink` | counterexample shrinking (`#derive(@quickcheck.Shrink)`) — in-place field shrinking only, see `testing.md` "Property tests" |
+| `ToJson` | `json_inspect`, `Json(x)` / `@json.to_json(x)` (`x.to_json()` needs an `extend` line; builtins such as `String`/`Array` have no `.to_json()` method any more — error 4015) |
 | `FromJson` | `@json.from_json` — the package must import `moonbitlang/core/json` even for the derive alone (else `core_package_not_imported`, 0071) |
 
 ### `Default` requirements
@@ -68,11 +70,12 @@ pub extend Level with @debug.Debug::{to_repr} // `debug_inspect` / `Repr(x)` sti
 - **Enum**: exactly one constant (no-payload) variant — ambiguous if multiple, undefined if none.
 
 ```mbt nocheck
+#derive(Default, Eq, Debug)
 enum DeriveDefaultEnum {
   Case1(Int)
   Case2(label~ : String)
   Case3                              // chosen as default
-} derive(Default, Eq, Debug)
+}
 ```
 
 ## `FromJson` / `ToJson`
@@ -102,11 +105,12 @@ Pick `flat` for compact output; pick `legacy` when consumers expect tagged objec
 Inside a struct field, `Option[T]` is encoded as `T | undefined` only when it's a **direct** struct field. In nested positions (tuples, nested options, collections), it falls back to `[T] | null`.
 
 ```mbt nocheck
+#derive(ToJson)
 struct A {
   x : Int?         // direct field      → Some(1) ⇒ 1, None ⇒ omitted
   y : Int??        // nested            → Some(None) ⇒ null, Some(Some(1)) ⇒ [1]
   z : (Int?, Int??)// nested            → uses [T] | null encoding
-} derive(ToJson)
+}
 ```
 
 This is why `Some(None)` and `None` would otherwise be indistinguishable for `Option[Option[T]]`.
@@ -114,7 +118,8 @@ This is why `Some(None)` and `None` would otherwise be indistinguishable for `Op
 ### Container arguments
 
 ```mbt nocheck
-struct S { my_long_name : Int } derive(ToJson(rename_fields="PascalCase"))
+#derive(ToJson(rename_fields="PascalCase"))
+struct S { my_long_name : Int }
 // → { "MyLongName": 0 }
 ```
 
@@ -126,16 +131,17 @@ struct S { my_long_name : Int } derive(ToJson(rename_fields="PascalCase"))
 ### Per-field / per-case arguments
 
 - **`rename = "..."`** — overrides container-wide `rename_fields` / `rename_cases`. Cannot rename positional fields.
-- Combine with `fields(...)` to scope: `derive(ToJson(fields(x(rename="renamedX"))))`.
+- Combine with `fields(...)` to scope: `#derive(ToJson(fields(x(rename="renamedX"))))`.
 
 ```mbt nocheck
-struct JsonTest3 {
-  x : Int
-  y : Int
-} derive (
+#derive(
   FromJson(fields(x(rename="renamedX"))),
   ToJson(fields(x(rename="renamedX"))),
 )
+struct JsonTest3 {
+  x : Int
+  y : Int
+}
 // → { "renamedX": 123, "y": 456 }
 ```
 

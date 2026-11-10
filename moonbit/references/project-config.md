@@ -103,8 +103,9 @@ target a single module (e.g. `moon publish`) must run inside that member, e.g.
 `moon -C mod_a publish`.
 
 **Mixed-target workspaces** (e.g. a js client + native server): bare
-`moon check/test/build` falls back to wasm-gc and errors with "package(s) do
-not support target backend 'wasm-gc'" — always pass `--target js|native`
+`moon check/test/build` falls back to the default backend (`wasm` on moon
+0.1.20261104; `wasm-gc` on ≤ 0.1.20261016) and errors with "package(s) do
+not support target backend '...'" — always pass `--target js|native`
 explicitly, and run both targets for shared packages (protocol types etc.).
 Do NOT refresh interfaces with `moon info --target X` in a multi-target
 package: it rewrites `pkg.generated.mbti` to that target's specialized
@@ -141,6 +142,13 @@ Use `supported_targets = "<target-set>"` at top level when the whole package
 only supports selected backends: `"native"` (single), `"+js+wasm-gc"` (explicit
 set), `"+all-js"` (all except js). `moon.mod` accepts the same field; the
 effective set is the module∩package intersection.
+
+Declare a backend only when the package has a real implementation there. Do
+not widen `supported_targets` by adding a per-target file whose functions
+return `None`/failure ("fail-closed stubs") for something the backend cannot
+do — leave the package, and everything that depends on it, off that backend.
+Replacing an FFI call with a portable one that works on the new backend is a
+real implementation and is fine.
 
 ```
 supported_targets = "native"
@@ -249,7 +257,7 @@ imports for package aliases such as `@utf8`, `@json`, or `@strconv`; add imports
 like `"moonbitlang/core/encoding/utf8"` when the compiler reports a missing or
 implicit core package. Both directions warn on moonc v0.10.16: naming `@json` /
 `@test.Test` / `@bench.T` without the import is `core_package_not_imported`
-(0071) — `derive(FromJson)` counts as using `@json` — and an import used only
+(0071) — `#derive(FromJson)` counts as using `@json` — and an import used only
 through a prelude name (e.g. `Buffer()` with `core/buffer` imported) is
 `unused_package` (0029).
 
