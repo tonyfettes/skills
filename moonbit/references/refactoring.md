@@ -301,9 +301,6 @@ readability checks across the touched file, not just the exact commented line:
   parsing its `Failure` text. Reserve `fail` for assertions, impossible states,
   quick tests, or errors that are intentionally not part of a typed handling
   path.
-- Do not catch an error only to re-raise it under another type or with a
-  prefix; let it propagate unless a caller matches the new variant (see "Let
-  errors propagate" in `errors.md`).
 - Name package members without the package name: `@terminal.open`, not
   `@terminal.terminal_open`. Name a package after what it owns, not after an
   action or a file it happened to hold.

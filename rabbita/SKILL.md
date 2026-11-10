@@ -34,13 +34,9 @@ Each returns `(Val[Model], Emit[Msg])`. For a single-state app,
 `new` and returns the `App`. **`Model` must implement `Eq`**: an
 equal result stops propagation, so derive `Eq` and keep the model immutable.
 
-**A component body runs exactly once, at mount.** A plain-value parameter is
-frozen into its closures forever, so every external fact that can change must
-arrive as a `Val[T]`. And a `Val` input is a value read while a callback runs,
-not a signal: an input change alone re-renders the view but sends no message,
-runs no `update`, and refreshes no subscription. Effects are driven by `Msg`
-only — see "Components and their inputs" in `references/view-rendering.md`
-before deciding where a piece of state lives.
+**A component body runs exactly once, at mount**, and a `Val` input is a value
+read while a callback runs, not a signal. Read "Components and their inputs"
+in `references/view-rendering.md` before deciding where a piece of state lives.
 
 **`update` must be a pure function.** It returns a new model and commands
 describing side effects — it never executes side effects directly. This purity
@@ -138,7 +134,7 @@ Label every non-obvious `Msg` payload — `AgentProgress(run_id~ : Int, Event)`,
 7. Event handlers **emit unconditionally**; the guard lives in update. A closure that branches on a value captured at render time (`if valid { emit(Submit) }`) sees the last painted frame, so type-then-Enter inside one frame does nothing.
 8. Component identity is DOM identity only when the container is keyed: a positional slot holding the same tag is patched in place across two different components. Key the container, and resolve DOM nodes after render, never inside a subscription loader.
 9. A menu whose visibility follows the model is `position: fixed` + CSS anchor positioning inside a size container, not the top layer (`popover`). Reserve the top layer for click-opened menus whose toggle itself calls `show()`.
-10. SSR/native builds: gate DOM-backed code behind `#cfg(target="js")` with inert native stubs; `@rabbita.perform` / `attempt` / `effect` are `#cfg(target="js")` — packages using them must declare js-only targets (`delay`, `batch`, `custom_cmd` compile on every target).
+10. SSR/native builds: a package that only makes sense in a browser declares `supported_targets = "js"` instead of carrying native stubs. In a package that really renders on native, gate DOM-backed code with `#cfg(target="js")`; a native counterpart is acceptable only where doing nothing is the correct server behavior (an effect Cmd that has no meaning during SSR), never as a placeholder for a value. `@rabbita.perform` / `attempt` / `effect` are `#cfg(target="js")` — packages using them must declare js-only targets (`delay`, `batch`, `custom_cmd` compile on every target).
 
 ## Common Mistakes
 
@@ -160,9 +156,7 @@ Label every non-obvious `Msg` payload — `AgentProgress(run_id~ : Int, Event)`,
 | `update` written as `(emit, msg, model) -> (cmd, model)` | `(model, msg, emit) -> (model, cmd)` — the 0.16 `create_state` shape |
 | `@cmd.custom_cmd` inline in update | Use a built-in package, or move into an FFI package as a named Cmd function |
 | New `extern "js"` written without asking the user | Stop; propose it with the built-ins you checked and wait for approval |
-| Passing a plain value into a component and expecting it to update | Pass a `Val[T]`; the component body ran once and froze the plain value |
-| Wrapping each dynamic row in a stateful component (a per-row context menu, dropdown) | The wrapper freezes its children; a hand-written `switch_by(by=revision)` cache then goes stale on the field the revision forgot. Keep ONE controlled instance at list level (open target + anchor in its state); rows only dispatch stable target keys |
-| Expecting a component to react when only its input changed ("the page was opened") | Keep that state in the parent model and forward one `Msg`, or mount the component per occurrence with `switch_by` (only when no in-flight work must survive unmount) |
+| Plain-value component parameter that the parent expects to update; a stateful component wrapped around each list row; a component expected to react when only its input changed | See "Components and their inputs" in `references/view-rendering.md` — pass a `Val`, keep one controlled instance per list, forward a `Msg` from the parent |
 | Relying on `autofocus=true` for an input inserted in response to a click | The clicked control already holds focus, so the browser skips autofocus; return an after-render focus Cmd from the update branch that inserts the input |
 | Handler closure deciding with a render-time `Bool` before emitting (`Emit(key => if valid { ... })`) | Emit unconditionally (`emit.map(key => KeyDown(key))`); update reads current state |
 | `data-*` marker + `MutationObserver` so a component notices its own input changed | Deliver the change through the component's `Input`/`Msg`; state never round-trips through the DOM |
@@ -192,8 +186,7 @@ Label every non-obvious `Msg` payload — `AgentProgress(run_id~ : Int, Event)`,
 - Conditional sibling rendered before a focus-holding element in an `Array` child list (index shift = focus loss); a dynamic list rendered as `Array[Html]` instead of keyed `Map[String, Html]`
 - A raise-capable call inside `view` without a catch-and-fallback at the boundary
 - Deprecated names (`Dispatch`, `cell` family, `with_init`, `raw_effect`) in new code
-- A component constructor taking plain `String`/`Bool`/record parameters that the parent recomputes on every render
-- A stateful component instantiated per list row around row content
+- A component taking plain parameters the parent recomputes, or a stateful component instantiated per list row
 - A subscription loader that calls `get_element_by_id` (or any DOM lookup) synchronously
 - A unit or e2e test asserting Rabbita's own behavior: DOM node identity, `isConnected`, diff output
 - A loop that mutates the DOM children it is iterating (`get_children()` / any live-collection binding + `remove_child`/`append_child` in the body)

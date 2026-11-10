@@ -9,23 +9,20 @@ Authoritative guide for writing, refactoring, testing, and binding MoonBit proje
 
 ## Toolchain version baseline
 
-This skill was last revalidated against **MoonBit toolchain moonc v0.10.16 /
-moon 0.1.20261016** (2026-10-16), with `moonbitlang/async` 0.22.5; skill last
-updated 2026-10-20. Spot-updated on moonc v0.10.20 / moon 0.1.20261104
-(2026-11-06): postfix `} derive(...)` is deprecated since v0.10.19 (0027) — write a
-`#derive(...)` attribute line before the declaration (`moon fmt` migrates);
-builtin types lost their `.to_json()` dot method — use `Json(x)` or
-`@json.to_json(x)`; `local` and `namespace` are reserved words. Second pass on
-the same toolchain (2026-11-10): `try?` is **removed** (parse error 3002); bare
-`moon check/test/build` now defaults to the `wasm` backend (it was `wasm-gc`);
-async IO also ships inside core as `moonbitlang/core/async` (experimental, API
-differs from `moonbitlang/async` — migration table in `references/async.md`).
-Every checked code block in `references/` compiles on v0.10.20. Changes since the earlier
-v0.10.4 baseline that most often bite: `moon.mod.json`/`moon.pkg.json` are rejected (migrate with
-`moon fmt`); `pkgtype(kind: "executable")` replaces `"is-main"`; functional
-`loop` is deprecated; partial matches are errors; `derive`/`pub impl` need
-`pub extend` lines; `moon fmt` rewrites `Int`/`UInt` to `Int32`/`UInt32`;
-async cancellation is not catchable (`references/async.md`).
+Baseline: **moonc v0.10.20 / moon 0.1.20261104** (2026-11), with
+`moonbitlang/async` 0.22.x. Checked code blocks in `references/` compile on it.
+Compared with training-era MoonBit (≈ v0.10.4), these changes bite most often:
+
+- `moon.mod.json` / `moon.pkg.json` are rejected (`moon fmt` migrates);
+  `pkgtype(kind: "executable")` replaces `"is-main"`.
+- Derive with a `#derive(...)` line above the type; `derive` / `pub impl` on a
+  non-`priv` type need `pub extend` lines.
+- `try?` is removed, functional `loop` is deprecated, partial matches are errors.
+- `moon fmt` rewrites `Int` / `UInt` to `Int32` / `UInt32`.
+- Builtin types have no `.to_json()` dot method — `Json(x)` or `@json.to_json(x)`.
+- Bare `moon check/test/build` defaults to the `wasm` backend (was `wasm-gc`).
+- Async cancellation is not catchable; async IO also ships in core as
+  `moonbitlang/core/async` with a different API (`references/async.md`).
 
 **Assume the toolchain is v0.10.20** and follow this skill's guidance as-is —
 do not preemptively run `moon version` or second-guess the references. Deviate
@@ -89,7 +86,21 @@ Mined from real session history; these caused the most compiler pushback by far:
 4. **Non-`Unit` results cannot be silently discarded** — wrap intentional discards in `ignore(...)`; first ask why the result is unused.
 5. **Write `!expr`, not `not(expr)`** (deprecated).
 6. **Materialize a `StringView` with `.to_owned()`, never `.to_string()`** (that's the deprecated `Show` display path).
-7. **Treat every `X::new()` / `@pkg.new()` as suspect — constructors are type-named now**: `Ref(x)`, `Map([], capacity=...)`, `Set([])`, `Buffer()`, `Queue()`, `Deque([], capacity=...)`, `Server(...)`. Also: `b"..."` for `Bytes` literals; `to_owned` not `to_array`; `trim()` not `trim_space`; the whole `@string.parse_int` / `parse_uint` / `parse_int64` / `parse_double` family (not `@strconv.*`); `reinterpret_as_int` / `reinterpret_as_uint` for Byte/UInt conversions; `unwrap_or` / `unwrap_or_else` not `Option::or` / `or_else` (both only supply a default value — there is no Option→Option fallback combinator, write `if a is Some(_) { a } else { b }`); `has_prefix` / `has_suffix` not `starts_with` / `ends_with`; `length()` not `size()`; `s.clamped_view(start=, end=)` / `exact_view` / a slice `s[a:b]` not `s.view(start_offset=, end_offset=)`; `to_owned` on a `BytesView` too (not `to_bytes`); `@int.MAX_VALUE` / `MIN_VALUE` not `max_value` / `min_value`; `reinterpret_as_int64` not `UInt64::to_int64`.
+7. **Renamed APIs — the old spelling is deprecated or gone.** Constructors are type-named, so treat every `X::new()` / `@pkg.new()` as suspect.
+
+   | Write | Not |
+   |---|---|
+   | `Ref(x)`, `Map([], capacity=...)`, `Set([])`, `Buffer()`, `Queue()`, `Deque([], capacity=...)`, `Server(...)` | `X::new(...)` |
+   | `b"..."` for a `Bytes` literal | a plain string literal |
+   | `to_owned()` on `StringView` / `ArrayView` / `BytesView` | `to_string`, `to_array`, `to_bytes` |
+   | `s.clamped_view(start=, end=)`, `exact_view`, or a slice `s[a:b]` | `s.view(start_offset=, end_offset=)` |
+   | `trim()`, `has_prefix` / `has_suffix`, `length()` | `trim_space`, `starts_with` / `ends_with`, `size()` |
+   | `@string.parse_int` / `parse_uint` / `parse_int64` / `parse_double` | `@strconv.*` |
+   | `unwrap_or` / `unwrap_or_else` | `Option::or` / `or_else` |
+   | `reinterpret_as_int` / `reinterpret_as_uint` for Byte/UInt conversions, `reinterpret_as_int64` | `UInt64::to_int64` and similar sign-changing `to_*` |
+   | `@int.MAX_VALUE` / `MIN_VALUE` | `max_value` / `min_value` |
+
+   There is no Option→Option fallback combinator: write `if a is Some(_) { a } else { b }`.
 8. **"does not implement trait Show/Eq" means a missing derive** — `==` / `!=` needs `#derive(Eq)`; interpolation `\{x}` needs `Show` (or use `\{Repr(x)}` for debug-only display; `to_repr(x)` is its deprecated old name). Check derives before writing comparisons on new enums/structs; this is the single most common type error in real sessions.
 9. **In a workspace mixing js/native modules, bare `moon check/test/build/info` defaults to `wasm` (`wasm-gc` on moon ≤ 0.1.20261016) and fails** — always pass `--target js|native` (run both for shared packages). And never run `moon info --target X` to refresh `.mbti` in a multi-target package: it rewrites `pkg.generated.mbti` to that target's specialized surface — regenerate with default-target `moon info` and revert such diffs.
 10. **Native `String` and `Bytes` are NUL-terminated by the runtime.** `String` has a trailing UTF-16 zero code unit and `Bytes` has a trailing zero byte; `length()` excludes that sentinel. At C FFI boundaries, pass UTF-8 strings as `@utf8.encode(s)` for `const char *` — do not hand-roll conversion loops or append an extra `\0` unless the NUL is part of the logical payload. Read `references/ffi/c.md` before editing `extern "c"` bindings, C stubs, or `char *` call sites.
@@ -278,7 +289,7 @@ my_module
 - **Don't `match` an Option** — use `x.unwrap_or(...)` (and friends) for trivial defaults, `if x is Some(v) { ... } else { ... }` for branching (chain it with related boolean conditions when that removes a nested `match` without hiding behavior), or `guard x is Some(v) else { ... }` for early exit. Reserve `match` for enums with several meaningful arms.
 - **Don't encode absence or failure as sentinel values (`""`, `-1`, empty array)** — model it in the type. A function that can come up empty returns `T?` (or raises a typed `suberror`), never `""`; a field that starts unset is `String?`, not `String` initialized to `""`; an optional param whose absence matters downstream is `arg? : T?`, never `arg? : String = ""` re-detected with `== ""` later. `unwrap_or("")` is legitimate only at the last step before display/serialization — never mid-pipeline. `catch { _ => "" }` swallows the error AND corrupts the domain. Litmus test: if any code branches on `== ""` / `.is_empty()` to mean "present or not", the type should have been `T?`. Boundary validation that rejects empty input (`guard name.trim() != "" else { raise ... }`) is fine — that rejects bad data rather than encoding absence. See "Modeling absence" in `references/types.md`.
 - **Don't swallow all async errors** — a catch-all `catch { _ => () }` in async code is for genuinely best-effort operations only. Since `moonbitlang/async` 0.22.0 `catch` cannot capture cancellation, so do **not** add an `error if @async.is_being_cancelled() => raise error` arm — it is dead code; see `references/async.md`.
-- **Don't catch an error just to re-wrap it** — `catch { e => raise MyError("could not X: \{e}") }` adds a variant nobody matches and a prefix the inner message already carries; let the original error propagate. Wrap only when a caller branches on the new variant. A package's own `suberror` carries variants (`CacheRootMismatch`, `IndexFailed(String)`), not one `E(String)` bag — see `references/errors.md`.
+- **Don't catch an error just to re-wrap it**, and give a package's own `suberror` one variant per cause rather than a single `E(String)` — see "Let errors propagate" in `references/errors.md`.
 - **Don't write a `Result`-returning or `try_*` function where `raise` works** — declare `-> T raise E`; keep `Result` as local data only (`result_error_return`, 0078).
 - **Don't mark a function `async` unless it suspends** (`unused_async`, 0067), and don't wrap a non-raising body in `try`/`catch` (`unused_try`, 0023).
 - **A `..` cascade must end in a `Unit` method** — `buf..write_string(a)..to_string()` discards the `String` (`invalid_cascade`); finish with `.to_string()`.
@@ -304,7 +315,7 @@ my_module
 - **Don't call `@json.inspect()`** — use the prelude `json_inspect(value, ...)` without a package prefix
 - **Async** — MoonBit has no `await` keyword; do not add it. Async functions/tests are marked with the `async` prefix (e.g. `[pub] async fn ...`, `async test ...`). Async functions default to raising, so do not add `raise`; add `noraise` only when the async body must not raise.
 - **No `finally`** in MoonBit — use `defer expr` / `defer { ... }` for scope-exit cleanup (runs on normal exit and when an error propagates); see `references/control-flow.md`
-- **Cancellation-critical async cleanup** — in `moonbitlang/async` (≥ 0.22.0), `defer`/`errdefer` run on cancellation but `catch` does not; any async operation inside the cleanup is itself cancelled immediately; must-complete cleanup needs `@async.protect_from_cancel`, with important refinements — read `references/async.md` before writing one. `TaskGroup::add_defer` takes a `nocancel` callback; a `nocancel` function cannot call cancellable async code (error 4227) — wrap it in `protect_from_cancel`. A cancellable call inside `defer`/`errdefer` warns `cancellable_defer` (0098): put `nocancel` on the cleanup function's own signature rather than wrapping every call site. `with_cancellation_handler` is deprecated → `handle_cancellation`.
+- **Cancellation-critical async cleanup** — in `moonbitlang/async` (≥ 0.22.0), `defer`/`errdefer` run on cancellation but `catch` does not; any async operation inside the cleanup is itself cancelled immediately; must-complete cleanup needs `@async.protect_from_cancel`, with important refinements — read `references/async.md` before writing one. `TaskGroup::add_defer` takes a `nocancel` callback; a `nocancel` function cannot call cancellable async code (error 4227) — wrap it in `protect_from_cancel`. A cancellable call inside `defer`/`errdefer` warns `cancellable_defer` (0098) — fixes in `references/async.md`. `with_cancellation_handler` is deprecated → `handle_cancellation`.
 - **Async pipeline backpressure** — use **bounded** queues between reader/writer tasks (an `Unbounded` inbound queue can OOM the process); shutdown/queue-draining rules in `references/async.md`.
 - **No cross-package extension methods** — you cannot define `@otherpkg.Type::method` from outside that type's own package. Use free functions or define a trait and `impl Trait for @otherpkg.Type` instead.
 - **Do NOT use context7** for MoonBit library lookups — MoonBit packages aren't indexed there. Use `moon ide doc`, mooncakes.io, the moon registry cache (`${MOON_HOME:-$HOME/.moon}/registry/cache/`), `.mbti` files, or the library's source/GitHub instead.
